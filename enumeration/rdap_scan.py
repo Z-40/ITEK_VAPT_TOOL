@@ -4,116 +4,133 @@ import json
 import argparse
 import os
 import re
-from datetime import datetime, timezone
-
-
-# =========================================================================
-# PROTOCOL REGISTRIES & CANONICAL MAPS
-# =========================================================================
-CANONICAL_IANA_WHITELIST = ["292", "426", "1343", "694"] 
-PUBLIC_ROLE_EMAILS = ["abuse@", "noc@", "legal@", "security@", "hostmaster@", "postmaster@"]
-DOMAIN_REGEX = re.compile(r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$')
+from datetime import datetime
 
 class UI:
-    C_GREEN = "\033[38;5;82m"; C_YELLOW = "\033[38;5;214m"; C_RED = "\033[38;5;196m"
     C_CYAN = "\033[38;5;45m"; C_SLATE = "\033[38;5;244m"; C_WHITE = "\033[38;5;255m"
     B_BOLD = "\033[1m"; RESET = "\033[0m"
 
     @classmethod
     def banner(cls):
-        print(f"{cls.C_CYAN}{cls.B_BOLD}" + "="*72)
-        print(f" 🛡️  DOMAIN STATUS AUDIT ENGINE")
-        print(f"    v7.6 // Browser Masking Enabled // 2026")
-        print("="*72 + f"{cls.RESET}")
+        print(f"{cls.C_CYAN}{cls.B_BOLD}" + "="*85)
+        print(f" 🛡️  DOMAIN STATUS AUDIT ENGINE // COMPLETE RAW INVENTORY MODE // 2026")
+        print("="*85 + f"{cls.RESET}")
 
-    @classmethod
-    def show_legend(cls):
-        print(f"\n{cls.C_CYAN}{cls.B_BOLD} DECODER: WHAT THESE RESULTS MEAN{cls.RESET}")
-        print(f"{cls.C_SLATE}──────────────────────────────────────────────────────────────────────{cls.RESET}")
-        print(f"{cls.C_WHITE}• Expiration:   {cls.RESET}Registry lease date. Low days = risk of site outage.")
-        print(f"{cls.C_WHITE}• Name Servers: {cls.RESET}Redundancy check. 2+ is standard. 1 = failure point.")
-        print(f"{cls.C_WHITE}• Registrar:    {cls.RESET}Your 'landlord'. Confirms if managed by authorized corporate vendor.")
-        print(f"{cls.C_WHITE}• Transfer Lock:{cls.RESET}Active = Hijack protection. Inactive = Open door to theft.")
-        print(f"{cls.C_WHITE}• DNSSEC:       {cls.RESET}Cryptographic sign. Verified = Security against interception.")
-        print(f"{cls.C_SLATE}──────────────────────────────────────────────────────────────────────{cls.RESET}\n")
 
 # =========================================================================
-# STAGE 1-3: LOGIC & EVALUATION
+# DETAILED DEEP HARVESTING LOGIC (NO GRADING - PURE FACTS)
 # =========================================================================
-def enforce_rdap_schema_guard(raw_json):
-    sanitized = {"events": [], "entities": [], "status": [], "nameservers": [], "secureDNS": {}, "schema_completeness": 100.0}
-    if not isinstance(raw_json, dict): return sanitized, 0.0
-    for node in ["events", "entities", "status"]:
-        if node in raw_json and isinstance(raw_json[node], list): sanitized[node] = raw_json[node]
-    if "nameservers" in raw_json: sanitized["nameservers"] = raw_json["nameservers"]
-    if "secureDNS" in raw_json: sanitized["secureDNS"] = raw_json["secureDNS"]
-    return sanitized, 100.0
+def extract_complete_facts(domain, raw_json):
+    if not isinstance(raw_json, dict):
+        return {"target": domain, "error": "Invalid JSON payload"}
 
-def extract_facts(domain, validated_json):
+    # Initialize a wide, structured fact dictionary
     facts = {
-        "target": domain, "is_cctld": len(domain.split('.')[-1]) == 2,
-        "expiration_raw": "DATA_NOT_PROVIDED", "epp_statuses": [],
-        "dnssec_state": "DATA_NOT_PROVIDED", "nameservers": [], "canonical_iana_id": None
+        "target": domain,
+        "registrar_name": "DATA_NOT_PROVIDED",
+        "canonical_iana_id": "DATA_NOT_PROVIDED",
+        "created_date": "DATA_NOT_PROVIDED",
+        "updated_date": "DATA_NOT_PROVIDED",
+        "expiration_date": "DATA_NOT_PROVIDED",
+        "epp_statuses": [],
+        "nameservers": [],
+        "dnssec_state": "UNSIGNED",
+        "extracted_emails": []
     }
-    for event in validated_json.get("events", []):
-        if isinstance(event, dict) and event.get("eventAction") == "expiration":
-            facts["expiration_raw"] = str(event.get("eventDate"))
-            break
-    facts["epp_statuses"] = [str(s).lower().strip() for s in validated_json.get("status", [])]
-    facts["dnssec_state"] = "SIGNED" if validated_json.get("secureDNS", {}).get("delegationSigned") is True else "UNSIGNED"
-    for ns in validated_json.get("nameservers", []):
-        if isinstance(ns, dict): facts["nameservers"].append(str(ns.get("ldhName", "")).lower())
-    for entity in validated_json.get("entities", []):
-        for pid in entity.get("publicIds", []):
-            if "iana" in str(pid.get("type")).lower(): facts["canonical_iana_id"] = str(pid.get("identifier"))
+
+    # 1. Parse Event Timestamps
+    for event in raw_json.get("events", []):
+        action = event.get("eventAction")
+        date = event.get("eventDate")
+        if action == "registration":
+            facts["created_date"] = date
+        elif action == "last changed":
+            facts["updated_date"] = date
+        elif action == "expiration":
+            facts["expiration_date"] = date
+
+    # 2. Parse Core Statuses & Nameservers
+    facts["epp_statuses"] = [str(s).lower().strip() for s in raw_json.get("status", [])]
+    
+    for ns in raw_json.get("nameservers", []):
+        if isinstance(ns, dict) and "ldhName" in ns:
+            facts["nameservers"].append(ns["ldhName"].lower())
+
+    # 3. Parse DNSSEC
+    if raw_json.get("secureDNS", {}).get("delegationSigned") is True:
+        facts["dnssec_state"] = "SIGNED"
+
+    # 4. Recursive Entity Harvesting (Registrar Name, IANA ID, and Contact Emails)
+    emails_found = set()
+    
+    def parse_entities(entities_list):
+        for entity in entities_list:
+            # Look for registrar roles and properties
+            roles = entity.get("roles", [])
+            if "registrar" in roles:
+                for vcard in entity.get("vcardArray", []):
+                    if isinstance(vcard, list):
+                        for item in vcard:
+                            if isinstance(item, list) and item[0] == "fn":
+                                facts["registrar_name"] = item[3]
+
+            # Grab IANA ID tokens
+            for pid in entity.get("publicIds", []):
+                if "iana" in str(pid.get("type")).lower():
+                    facts["canonical_iana_id"] = str(pid.get("identifier"))
+
+            # Scrape vcard blocks for email arrays
+            for vcard in entity.get("vcardArray", []):
+                if isinstance(vcard, list):
+                    for item in vcard:
+                        if isinstance(item, list) and item[0] == "email":
+                            # Handle both direct string and nested list variations in vcard specs
+                            email_val = item[3]
+                            if isinstance(email_val, str):
+                                emails_found.add(email_val.lower().strip())
+
+            # Recurse down nested sub-entities if present
+            if "entities" in entity:
+                parse_entities(entity["entities"])
+
+    if "entities" in raw_json:
+        parse_entities(raw_json["entities"])
+
+    facts["extracted_emails"] = list(emails_found)
     return facts
 
-def evaluate_compliance_matrix(facts, schema_score):
-    matrix = {"Target": facts["target"], "Type": "ccTLD" if facts["is_cctld"] else "gTLD", "Axes": {}}
-    if facts["expiration_raw"] != "DATA_NOT_PROVIDED":
-        try:
-            exp = datetime.fromisoformat(facts["expiration_raw"].replace("Z", "+00:00"))
-            days = (exp - datetime.now(timezone.utc)).days
-            matrix["Axes"]["Expiration"] = {"State": "CRITICAL" if days < 0 else "OK", "Details": f"{days} days remaining."}
-        except: matrix["Axes"]["Expiration"] = {"State": "INFO", "Details": "Date parse error."}
-    else:
-        matrix["Axes"]["Expiration"] = {"State": "INFO", "Details": "No date provided."}
-    
-    ns_count = len(facts["nameservers"])
-    matrix["Axes"]["Name Servers"] = {"State": "OK" if ns_count >= 2 else "WARNING", "Details": f"{ns_count} servers detected."}
-    
-    is_authorized = facts["canonical_iana_id"] in CANONICAL_IANA_WHITELIST
-    matrix["Axes"]["Registrar"] = {"State": "OK" if is_authorized else "WARNING", "Details": f"ID: {facts['canonical_iana_id'] or 'Unknown'}"}
-    
-    is_locked = any(kw in str(facts["epp_statuses"]) for kw in ["prohibited", "locked"])
-    matrix["Axes"]["Transfer Lock"] = {"State": "OK" if is_locked else "WARNING", "Details": "Lock active" if is_locked else "No lock detected."}
-    
-    matrix["Axes"]["DNSSEC"] = {"State": "OK" if facts["dnssec_state"] == "SIGNED" else "INFO", "Details": facts["dnssec_state"]}
-    return matrix
 
 # =========================================================================
-# STAGE 4: RENDERING
+# DETAILED OUTPUT FORMATTER
 # =========================================================================
-def render_pretty_console(matrix):
-    print(f" {UI.C_CYAN}┌─────────────────────────────────────────────────────────────┐{UI.RESET}")
-    print(f"  {UI.B_BOLD}{UI.C_WHITE}🎯 TARGET: {matrix['Target'].ljust(40)}{UI.RESET}")
-    print(f"  {UI.C_SLATE}Type: {matrix['Type']}{UI.RESET}")
+def render_complete_console(facts):
+    print(f" {UI.C_CYAN}┌───────────────────────────────────────────────────────────────────────────────────┐{UI.RESET}")
+    print(f"  {UI.B_BOLD}{UI.C_WHITE}🎯 TARGET FACT SHEET: {facts['target'].ljust(60)}{UI.RESET}")
+    print(f" {UI.C_CYAN}├───────────────────────────────────────────────────────────────────────────────────┤{UI.RESET}")
     
-    state_colors = {"OK": UI.C_GREEN, "INFO": UI.C_CYAN, "WARNING": UI.C_RED, "CRITICAL": UI.C_RED}
+    print(f"    {UI.C_SLATE}• Registrar Name   :{UI.RESET} {UI.C_WHITE}{facts['registrar_name']}{UI.RESET}")
+    print(f"    {UI.C_SLATE}• Registrar IANA   :{UI.RESET} {UI.C_WHITE}{facts['canonical_iana_id']}{UI.RESET}")
+    print(f"    {UI.C_SLATE}• DNSSEC Root State:{UI.RESET} {UI.C_WHITE}{facts['dnssec_state']}{UI.RESET}")
+    print(f" {UI.C_CYAN}├───────────────────────────────────────────────────────────────────────────────────┤{UI.RESET}")
+    print(f"    {UI.C_SLATE}• Created Timestamp:{UI.RESET} {UI.C_WHITE}{facts['created_date']}{UI.RESET}")
+    print(f"    {UI.C_SLATE}• Updated Timestamp:{UI.RESET} {UI.C_WHITE}{facts['updated_date']}{UI.RESET}")
+    print(f"    {UI.C_SLATE}• Expire Timestamp :{UI.RESET} {UI.C_WHITE}{facts['expiration_date']}{UI.RESET}")
+    print(f" {UI.C_CYAN}├───────────────────────────────────────────────────────────────────────────────────┤{UI.RESET}")
     
-    for axis, data in matrix["Axes"].items():
-        color = state_colors.get(data["State"], UI.C_WHITE)
-        print(f"    {UI.C_SLATE}• {axis.ljust(15)} {color}[{data['State'].ljust(8)}]{UI.RESET} {data['Details']}")
-    print(f" {UI.C_CYAN}└─────────────────────────────────────────────────────────────┘{UI.RESET}")
+    ns_text = ", ".join(facts["nameservers"]) if facts["nameservers"] else "None detected"
+    print(f"    {UI.C_SLATE}• Name Servers     :{UI.RESET} {UI.C_WHITE}{ns_text}{UI.RESET}")
+    
+    status_text = ", ".join(facts["epp_statuses"]) if facts["epp_statuses"] else "None detected"
+    print(f"    {UI.C_SLATE}• Active EPP Status:{UI.RESET} {UI.C_WHITE}{status_text}{UI.RESET}")
+    
+    email_text = ", ".join(facts["extracted_emails"]) if facts["extracted_emails"] else "None detected / Redacted by GDPR"
+    print(f"    {UI.C_SLATE}• Harvested Emails :{UI.RESET} {UI.C_WHITE}{email_text}{UI.RESET}")
+    
+    print(f" {UI.C_CYAN}└───────────────────────────────────────────────────────────────────────────────────┘{UI.RESET}")
 
-# =========================================================================
-# ORCHESTRATION
-# =========================================================================
+
 async def fetch_rdap_raw(session, domain):
-    # Masking as a real browser to bypass WAF 403 blocks
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
         async with session.get(f"https://rdap.org/domain/{domain}", headers=headers, timeout=10) as r:
             if r.status != 200: return {"Error": f"Registry returned HTTP {r.status}"}
@@ -123,30 +140,28 @@ async def fetch_rdap_raw(session, domain):
 async def pipeline(session, domain, output):
     raw = await fetch_rdap_raw(session, domain)
     if "Error" in raw:
-        print(f" {UI.C_RED}❌ ERROR: {domain} -> {raw['Error']}{UI.RESET}")
-        return {"Target": domain, "Error": raw["Error"]}
+        print(f" Error: {domain} -> {raw['Error']}")
+        return {"target": domain, "error": raw["Error"]}
         
-    val, score = enforce_rdap_schema_guard(raw)
-    facts = extract_facts(domain, val)
-    matrix = evaluate_compliance_matrix(facts, score)
-    if not output: render_pretty_console(matrix)
-    return matrix
+    facts = extract_complete_facts(domain, raw)
+    
+    if not output: 
+        render_complete_console(facts)
+        
+    return facts
 
 async def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="RDAP Deep Fact Harvester")
     parser.add_argument("-d", "--domains", nargs="+")
     parser.add_argument("-f", "--file")
     parser.add_argument("-o", "--output")
-    parser.add_argument("--legend", action="store_true")
     args = parser.parse_args()
-
-    if args.legend: UI.show_legend()
     
     targets = args.domains or []
     if args.file and os.path.exists(args.file):
         with open(args.file) as f: targets = [l.strip() for l in f if l.strip()]
 
-    if not targets and not args.legend:
+    if not targets:
         print("Error: No domains provided.")
         return
 
