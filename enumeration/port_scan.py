@@ -5,6 +5,7 @@ Hardened Edition with Protocol & Version Fingerprinting Engine.
 Usage: python portscanner.py <target> [options]
 
 [MODIFIED]: Severity grading and visual risk indicators removed. Reports raw facts only.
+Outputs raw JSON payload directly to stdout when --json is used.
 """
 
 import socket
@@ -156,13 +157,13 @@ def run_scan_engine(ip, ports, timeout, max_workers, grab_banners=False):
             res = fut.result()
             if res:
                 found_ports.append(res)
-                if not getattr(sys.modules['__main__'], 'IS_JSON_MODE', False):
-                    with print_lock:
-                        srv = res["base_service"]
-                        lat = res["latency_ms"]
-                        print(f"  [{GREEN}OPEN{R}] Port {B}{res['port']}{R:<5} | Service: {TEAL}{srv:<12}{R} | Latency: {lat}ms")
-                        if "fingerprint" in res and "raw_response" in res["fingerprint"]:
-                            print(f"         └── {GREY}Raw Banner: {res['fingerprint']['raw_response']}{R}")
+                # Redirect terminal progress logs to stderr to keep stdout sterile
+                with print_lock:
+                    srv = res["base_service"]
+                    lat = res["latency_ms"]
+                    print(f"  [{GREEN}OPEN{R}] Port {B}{res['port']}{R:<5} | Service: {TEAL}{srv:<12}{R} | Latency: {lat}ms", file=sys.stderr)
+                    if "fingerprint" in res and "raw_response" in res["fingerprint"]:
+                        print(f"        └── {GREY}Raw Banner: {res['fingerprint']['raw_response']}{R}", file=sys.stderr)
     return sorted(found_ports, key=lambda x: x["port"])
 
 def check_host_up(ip, timeout=2.0):
@@ -187,7 +188,7 @@ def resolve_target(target):
 
 # ── Formatter Modules (MODIFIED) ──────────────────────────────────────────────
 def divider():
-    print(f"  {GREY}══════════════════════════════════════════════════════════════════════════════════{R}")
+    print(f"  {GREY}══════════════════════════════════════════════════════════════════════════════════{R}", file=sys.stderr)
 
 def parse_ports(ports_arg):
     if not ports_arg:
@@ -227,14 +228,14 @@ def main():
     # Operational configuration boundaries
     timeout = args.timeout or (1.0 if args.profile == "fast" else 2.5 if args.profile == "deep" else 1.5)
 
-    if not args.json:
-        divider()
-        print(f"  {B}PORT SCANNING FACTS INVENTORY{R}")
-        print(f"  {GREY}Target Destination :{R}  {args.target} ({ip})")
-        print(f"  {GREY}Total Ports Scanned:{R}  {len(ports)}")
-        print(f"  {GREY}Timestamp          :{R}  {datetime.now().isoformat()}")
-        divider()
-        print()
+    # All human-readable output redirected entirely to stderr
+    divider()
+    print(f"  {B}PORT SCANNING FACTS INVENTORY{R}", file=sys.stderr)
+    print(f"  {GREY}Target Destination :{R}  {args.target} ({ip})", file=sys.stderr)
+    print(f"  {GREY}Total Ports Scanned:{R}  {len(ports)}", file=sys.stderr)
+    print(f"  {GREY}Timestamp          :{R}  {datetime.now().isoformat()}", file=sys.stderr)
+    divider()
+    print(file=sys.stderr)
 
     grab = args.profile in ("deep", "standard") or (args.ports is not None)
     open_ports = run_scan_engine(ip, ports, timeout, args.workers, grab_banners=grab)
@@ -248,10 +249,11 @@ def main():
             "timestamp": datetime.now().isoformat(),
             "open_ports": open_ports
         }
+        # Sterile stdout dump
         print(json.dumps(export_data, indent=2))
     else:
-        print()
-        print(f"  Scan Finished. Total Active Open Connections: {len(open_ports)}")
+        print(file=sys.stderr)
+        print(f"  Scan Finished. Total Active Open Connections: {len(open_ports)}", file=sys.stderr)
         divider()
 
 if __name__ == "__main__":
