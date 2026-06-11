@@ -1,607 +1,490 @@
 #!/usr/bin/env python3
 """
-fingerprint.py — Web Fingerprinting & Asset Inventory Tool
-===========================================================
-Reads a subdomain enumeration JSON produced by an upstream tool,
-concurrently probes every host over both HTTP and HTTPS, and writes a
-structured fingerprint report (with summary statistics) to a JSON file
-named ``<target>_web_fingerprints.json`` in the same directory as the
-input file.
+recon_pipeline.py
+~~~~~~~~~~~~~~~~~
+Heavy-duty orchestration wrapper for Windows-based web recon analysts.
+Concurrently routes every subdomain through httpx and wafw00f.
 
-Usage
------
-    # Minimal
-    python fingerprint.py scan.json
-
-    # Full flags
-    python fingerprint.py scan.json --concurrency 50 --timeout 15
-
-Expected input format
----------------------
-    {
-        "target": "example.com",
-        "generated": "2026-06-11 06:10:04 UTC",
-        "alive_count": 3,
-        "subdomains": {
-            "qa.example.com":       "10.0.0.1",
-            "retail.example.com":   "10.0.0.2"
-        }
-    }
-
-Dependencies (one-time install)
---------------------------------
-    pip install aiohttp
-
-Python: 3.10+   (uses ``match`` and new-style type hints internally)
+Fixed: Tightened pre-flight checks, modern UTC datetimes, dynamic JSON inputs,
+and proper error handling for unresolvable network targets.
 """
 
-from __future__ import annotations  # PEP 563: postponed evaluation of annotations
+from __future__ import annotations
 
 import argparse
-import asyncio
+import datetime
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
-from datetime import datetime, timezone
+import tempfile
+import time
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# Dependency guard — give the user a clear install hint if aiohttp is absent
-# ---------------------------------------------------------------------------
-try:
-    import aiohttp
-    from aiohttp import (
-        ClientConnectorError,
-        ClientError,
-        ClientResponseError,
-        ClientSSLError,
-        ServerDisconnectedError,
-        ServerTimeoutError,
-        TooManyRedirects,
-    )
-except ImportError:
-    sys.exit(
-        "[ERROR] aiohttp is not installed.\n"
-        "        Run:  pip install aiohttp"
-    )
+# ─────────────────────────────────────────────────────────────────────────────
+# TUNEABLE CONSTANTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+HTTPX_BATCH_TIMEOUT: int = 120   # seconds — the whole httpx subprocess
+HTTPX_PER_HOST:      int = 15    # seconds — passed to httpx via -timeout flag
+WAFW00F_TIMEOUT:     int = 30    # seconds — per-subdomain wafw00f subprocess
+MAX_WAF_WORKERS:     int = 10    # concurrent wafw00f threads
+
+IS_WIN: bool = sys.platform.startswith("win")
+
+_ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_BAD_FNAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# WINDOWS UTF-8 CONSOLE SETUP
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Read only the first N bytes of each response body.
-# 64 KiB is large enough to capture any realistic <head> block while
-# avoiding the cost of buffering entire multi-MB downloads.
-_BODY_READ_LIMIT: int = 65_536
-
-# Pre-compiled once; DOTALL lets '.' cross newlines inside <title> tags.
-_TITLE_RE: re.Pattern[str] = re.compile(
-    r"<title[^>]*>(.*?)</title>",
-    re.IGNORECASE | re.DOTALL,
-)
-
-# Schemes to probe for every discovered subdomain.
-_SCHEMES: tuple[str, ...] = ("http", "https")
+if IS_WIN:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except AttributeError:
+        pass
 
 
-# ---------------------------------------------------------------------------
-# Mutable counter (thread-safe within asyncio's single-threaded event loop)
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# LOGGING HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
 
-class _Counter:
-    """Tiny mutable integer wrapper used for atomic-ish progress counting."""
+def _ts() -> str:
+    return datetime.datetime.now().strftime("%H:%M:%S")
 
-    __slots__ = ("value",)
+def log_section(title: str) -> None:
+    bar = "=" * 70
+    print(f"\n{bar}\n  {title}\n{bar}", file=sys.stderr, flush=True)
 
-    def __init__(self) -> None:
-        self.value: int = 0
+def log_info(msg: str)  -> None:
+    print(f"[{_ts()}]  INFO   {msg}", file=sys.stderr, flush=True)
 
-    def increment(self) -> int:
-        """Bump and return the new value."""
-        self.value += 1
-        return self.value
+def log_ok(msg: str)    -> None:
+    print(f"[{_ts()}]  OK     {msg}", file=sys.stderr, flush=True)
+
+def log_warn(msg: str)  -> None:
+    print(f"[{_ts()}]  WARN   {msg}", file=sys.stderr, flush=True)
+
+def log_error(msg: str) -> None:
+    print(f"[{_ts()}]  ERROR  {msg}", file=sys.stderr, flush=True)
 
 
-# ---------------------------------------------------------------------------
-# Per-probe record skeleton
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# STRENGTHENED DEPENDENCY CHECK
+# ─────────────────────────────────────────────────────────────────────────────
 
-def _new_probe_record(url: str) -> dict[str, Any]:
+def _shell_probe(cmd: str) -> bool:
     """
-    Return a zeroed-out probe record for *url*.
-
-    Explicit ``None``/``[]`` defaults make the schema predictable for
-    downstream consumers — they never encounter a missing key.
+    Execute command through the shell. Strictly verifies exit codes and
+    scans stderr strings for hidden OS/Python invocation errors.
     """
-    return {
-        "probed_url": url,
-        "final_url": None,   # URL after all redirects have been followed
-        "status_code": None,   # Integer HTTP status (e.g. 200, 301, 403)
-        "server": None,   # Value of the "Server" response header
-        "x_powered_by": None,   # Value of the "X-Powered-By" header
-        "title": None,   # Inner text of the HTML <title> element
-        "redirect_chain": [],     # Ordered list of URLs traversed (populated
-                                  # only when at least one redirect occurred)
-        "error": None,   # Human-readable failure reason, or None
-    }
+    try:
+        proc = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if proc.returncode != 0:
+            return False
+        
+        # Verify stderr for silent execution failures (Windows specific or missing python modules)
+        err_msg = (proc.stderr or "").lower()
+        if "not recognized" in err_msg or "no module named" in err_msg:
+            return False
+            
+        return True
+    except (subprocess.TimeoutExpired, OSError):
+        return False
 
 
-# ---------------------------------------------------------------------------
-# Core async probe — the hot path
-# ---------------------------------------------------------------------------
-
-async def probe_url(
-    session: aiohttp.ClientSession,
-    sem: asyncio.Semaphore,
-    url: str,
-    timeout: aiohttp.ClientTimeout,
-    counter: _Counter,
-    total: int,
-) -> dict[str, Any]:
-    """
-    Perform a single HTTP GET against *url* and return a fingerprint record.
-
-    The function *never raises* — all exceptions are caught and stored in
-    ``record["error"]``, so ``asyncio.gather()`` can collect every result
-    even when individual hosts are unreachable.
-
-    Parameters
-    ----------
-    session : Shared ``aiohttp.ClientSession`` (ssl=False already set on the
-              underlying connector — no certificate validation is performed).
-    sem     : ``asyncio.Semaphore`` that caps simultaneous in-flight requests.
-    url     : Fully-qualified URL to probe (e.g. ``https://qa.example.com``).
-    timeout : ``aiohttp.ClientTimeout`` applied to the entire request lifecycle.
-    counter : Shared mutable counter incremented after each probe completes.
-    total   : Total number of probes scheduled (used for progress display).
-
-    Returns
-    -------
-    ``dict`` with keys: probed_url, final_url, status_code, server,
-    x_powered_by, title, redirect_chain, error.
-    """
-    record = _new_probe_record(url)
-
-    # Only ``concurrency`` coroutines may execute the body block simultaneously.
-    async with sem:
-        try:
-            async with session.get(
-                url,
-                timeout=timeout,
-                allow_redirects=True,   # follow 3xx chains automatically
-            ) as resp:
-
-                # ── Basic metadata from the final response ────────────────
-                record["status_code"] = resp.status
-                record["final_url"] = str(resp.url)
-                record["server"] = resp.headers.get("Server")
-                record["x_powered_by"] = resp.headers.get("X-Powered-By")
-
-                # ── Redirect chain ────────────────────────────────────────
-                # ``resp.history`` is a tuple of ClientResponse objects for
-                # every intermediate hop; ``resp.url`` is the final landing URL.
-                # We only populate the list when at least one hop occurred.
-                if resp.history:
-                    record["redirect_chain"] = (
-                        [str(hop.url) for hop in resp.history]
-                        + [str(resp.url)]
-                    )
-
-                # ── HTML <title> extraction (pure regex, no extra deps) ───
-                # We read a bounded chunk of the body so large binary
-                # responses (file downloads, media) are not fully buffered.
-                try:
-                    chunk = await resp.content.read(_BODY_READ_LIMIT)
-                    # Decode leniently; replace any undecodable byte sequences.
-                    snippet = chunk.decode("utf-8", errors="replace")
-                    match = _TITLE_RE.search(snippet)
-                    if match:
-                        # Collapse internal whitespace and stray newlines that
-                        # HTML authors routinely embed inside <title> tags.
-                        record["title"] = " ".join(match.group(1).split())
-                except Exception:
-                    # A body-read failure is non-fatal; title stays None.
-                    pass
-
-        # ── Exception ladder (most specific → most general) ───────────────
-
-        except asyncio.TimeoutError:
-            # The request exceeded the total timeout.
-            record["error"] = "timeout"
-
-        except ServerTimeoutError:
-            # The remote server took too long to respond.
-            record["error"] = "server_timeout"
-
-        except TooManyRedirects:
-            # aiohttp hit its internal redirect limit (default: 10).
-            record["error"] = "too_many_redirects"
-
-        except ClientSSLError as exc:
-            # Defensive catch: ssl=False disables cert verification, but
-            # some environments still raise on TLS protocol-level failures.
-            record["error"] = f"ssl_error: {exc}"
-
-        except (ClientConnectorError, ServerDisconnectedError) as exc:
-            # Host unreachable, refused connection, or mid-stream disconnect.
-            record["error"] = f"connection_error: {exc}"
-
-        except ClientResponseError as exc:
-            # Server returned an error response that aiohttp chose to raise.
-            record["error"] = f"http_error: {exc.status}"
-
-        except ClientError as exc:
-            # Catch-all for any remaining aiohttp-specific errors.
-            record["error"] = f"client_error: {type(exc).__name__}: {exc}"
-
-        except Exception as exc:
-            # Last-resort safety net — should never fire in normal operation.
-            record["error"] = f"unexpected_error: {type(exc).__name__}: {exc}"
-
-    # ── Progress reporting ────────────────────────────────────────────────
-    # Incrementing outside the semaphore block means the counter advances
-    # as soon as the probe finishes, regardless of sem contention.
-    n = counter.increment()
-    pct = n / total * 100
-
-    # Build a compact one-liner: index | percentage | status | url
-    tag = "OK " if record["error"] is None else "ERR"
-    sc = record["status_code"] or "---"
-    print(f"  [{n:>4}/{total}] {pct:5.1f}%  [{tag}] {sc}  {url}", flush=True)
-
-    return record
+def _which_first(candidates: list[str]) -> str | None:
+    for name in candidates:
+        if shutil.which(name):
+            return name
+    return None
 
 
-# ---------------------------------------------------------------------------
-# Orchestrator
-# ---------------------------------------------------------------------------
+def _safe_invoke(binary: str) -> str:
+    if " " in binary:
+        return binary
+    full_path = shutil.which(binary)
+    if full_path and " " in full_path:
+        return f'"{full_path}"'
+    return binary
 
-async def run_fingerprinting(
-    subdomains: dict[str, str],
-    *,
-    concurrency: int,
-    timeout_secs: float,
-) -> list[dict[str, Any]]:
-    """
-    Fan-out probes across all *subdomains* (HTTP + HTTPS) concurrently and
-    return results grouped by subdomain.
 
-    Parameters
-    ----------
-    subdomains    : ``{hostname: resolved_ip}`` mapping from the input JSON.
-    concurrency   : Upper bound on simultaneous in-flight HTTP connections.
-    timeout_secs  : Per-request wall-clock timeout in seconds.
+def check_dependencies() -> tuple[str, str]:
+    log_section("Dependency Pre-flight Check")
 
-    Returns
-    -------
-    List of dicts, each with keys:
-    ``subdomain``, ``ip``, ``probes`` (list of two probe records — one per
-    scheme in the order ``http``, ``https``).
-    """
-    sem = asyncio.Semaphore(concurrency)
-    timeout = aiohttp.ClientTimeout(total=timeout_secs)
-
-    # TCPConnector settings
-    # ─────────────────────
-    # ssl=False  → skip certificate validation entirely; essential for
-    #              QA / UAT hosts that use self-signed or expired certs.
-    # limit      → mirror the semaphore ceiling in the connection pool so
-    #              we never create more pooled connections than we can use.
-    connector = aiohttp.TCPConnector(ssl=False, limit=concurrency)
-
-    # Build the flat list of (hostname, ip, scheme) triples.
-    # Preserving insertion order means HTTP always precedes HTTPS for each
-    # host in the final grouped output.
-    probes_meta: list[tuple[str, str, str]] = [
-        (hostname, ip, scheme)
-        for hostname, ip in subdomains.items()
-        for scheme in _SCHEMES
-    ]
-
-    total = len(probes_meta)
-    counter = _Counter()
-
-    async with aiohttp.ClientSession(connector=connector) as session:
-        # Create one Task per (host × scheme) combination.
-        # Named tasks make asyncio debug output more readable.
-        tasks = [
-            asyncio.create_task(
-                probe_url(
-                    session,
-                    sem,
-                    f"{scheme}://{hostname}",
-                    timeout,
-                    counter,
-                    total,
-                ),
-                name=f"{scheme}://{hostname}",
+    # ── httpx Validation ──────────────────────────────────────────────────
+    httpx_bin = _which_first(["httpx", "httpx.exe"])
+    if httpx_bin is None or not _shell_probe(f"{_safe_invoke(httpx_bin)} -version" if httpx_bin else "httpx -version"):
+        if _shell_probe("httpx -version"):
+            httpx_bin = "httpx"
+        else:
+            log_error(
+                "httpx binary not found or non-executable.\n"
+                "         Install → go install github.com/projectdiscovery/httpx/cmd/httpx@latest\n"
+                "         Or drop 'httpx.exe' directly into this tool directory."
             )
-            for hostname, ip, scheme in probes_meta
-        ]
+            sys.exit(1)
 
-        # asyncio.gather never raises here because probe_url catches
-        # every exception internally.
-        probe_results: list[dict[str, Any]] = await asyncio.gather(*tasks)
+    httpx_invoke = _safe_invoke(httpx_bin)
+    log_ok(f"httpx   found  → {shutil.which(httpx_bin) or httpx_bin}")
 
-    # ── Re-group flat probe list by subdomain ─────────────────────────────
-    # We want one top-level record per subdomain that contains both probe
-    # results (http first, then https), for clean JSON structure.
-    per_host: dict[str, dict[str, Any]] = {}
-    for (hostname, ip, _scheme), result in zip(probes_meta, probe_results):
-        if hostname not in per_host:
-            per_host[hostname] = {
-                "subdomain": hostname,
-                "ip": ip,
-                "probes": [],
-            }
-        per_host[hostname]["probes"].append(result)
+    # ── wafw00f Validation ────────────────────────────────────────────────
+    wafw00f_bin = _which_first(["wafw00f", "wafw00f.exe"])
+    wafw00f_invoke = ""
 
-    return list(per_host.values())
+    if wafw00f_bin and _shell_probe(f"{_safe_invoke(wafw00f_bin)} --help"):
+        wafw00f_invoke = _safe_invoke(wafw00f_bin)
+    elif _shell_probe("python -m wafw00f --help"):
+        wafw00f_invoke = "python -m wafw00f"
+    else:
+        log_error(
+            "wafw00f is missing from your active environment.\n"
+            "         Install package via:  pip install wafw00f\n"
+            "         Verify via module:    python -m wafw00f --version"
+        )
+        sys.exit(1)
 
-
-# ---------------------------------------------------------------------------
-# Summary builder
-# ---------------------------------------------------------------------------
-
-def build_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
-    """
-    Derive high-level statistics from the collected probe results.
-
-    Returns a dict suitable for the top-level ``"summary"`` section of the
-    output report.
-    """
-    all_probes: list[dict[str, Any]] = [
-        probe
-        for host in results
-        for probe in host["probes"]
-    ]
-
-    successful = [p for p in all_probes if p["error"] is None]
-    failed = [p for p in all_probes if p["error"] is not None]
-
-    # Collect observable characteristics from successful probes only.
-    status_codes = sorted({p["status_code"] for p in successful})
-    servers = sorted({p["server"] for p in successful if p["server"]})
-    technologies = sorted({p["x_powered_by"] for p in successful if p["x_powered_by"]})
-
-    # Hosts where at least one probe responded (either scheme).
-    live_hosts = sorted({
-        host["subdomain"]
-        for host in results
-        if any(p["error"] is None for p in host["probes"])
-    })
-
-    # Unique error types observed across all failed probes.
-    error_types = sorted({
-        p["error"].split(":")[0]            # e.g. "connection_error"
-        for p in failed
-        if p["error"]
-    })
-
-    return {
-        "total_probes": len(all_probes),
-        "successful_probes": len(successful),
-        "failed_probes": len(failed),
-        "live_hosts": live_hosts,
-        "unique_status_codes": status_codes,
-        "unique_servers": servers,
-        "unique_technologies": technologies,
-        "observed_error_types": error_types,
-    }
+    log_ok(f"wafw00f found  → {wafw00f_invoke}")
+    return httpx_invoke, wafw00f_invoke
 
 
-# ---------------------------------------------------------------------------
-# I/O helpers
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 1 — INGEST & DYNAMIC SCHEMA DETECTION
+# ─────────────────────────────────────────────────────────────────────────────
 
-def load_and_validate_input(path: str) -> dict[str, Any]:
-    """
-    Load, parse, and schema-validate the upstream enumeration JSON.
-
-    Calls ``sys.exit()`` with a clear message on any I/O or schema problem,
-    so the caller can assume the returned dict is always well-formed.
-    """
-    if not os.path.isfile(path):
-        sys.exit(f"[ERROR] File not found: '{path}'")
+def load_targets(path: str) -> tuple[str, dict[str, dict[str, Any]]]:
+    log_section("Step 1  —  Ingest & Target Identification")
 
     try:
-        with open(path, "r", encoding="utf-8") as fh:
-            data: dict[str, Any] = json.load(fh)
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        log_error(f"Input file not found: {path}")
+        sys.exit(1)
     except json.JSONDecodeError as exc:
-        sys.exit(f"[ERROR] Malformed JSON in '{path}': {exc}")
+        log_error(f"JSON parse failure: {exc}")
+        sys.exit(1)
 
-    # Required top-level keys.
-    for key in ("target", "subdomains"):
-        if key not in data:
-            sys.exit(f"[ERROR] Input JSON is missing required key: '{key}'")
+    subdomains: dict[str, dict[str, Any]] = {}
+    target: str = "unknown_target"
 
-    if not isinstance(data["subdomains"], dict):
-        sys.exit(
-            "[ERROR] 'subdomains' must be a JSON object "
-            "(keys = hostnames, values = IP strings)."
+    # SCHEMA A: Subdomain format ('target', 'subdomains')
+    if "subdomains" in data:
+        target = str(data.get("target", "unknown_target")).strip()
+        raw_subs = data.get("subdomains", [])
+        
+        for item in raw_subs:
+            if isinstance(item, str):
+                sub = item.strip()
+                if sub:
+                    subdomains[sub] = {
+                        "ip": "N/A",
+                        "probes": [{"probed_url": f"http://{sub}", "error": None}]
+                    }
+            elif isinstance(item, dict):
+                sub = (item.get("subdomain") or item.get("host") or "").strip()
+                if sub:
+                    subdomains[sub] = {
+                        "ip": (item.get("ip") or "N/A").strip(),
+                        "probes": item.get("probes") or [{"probed_url": f"http://{sub}", "error": None}]
+                    }
+
+    # SCHEMA B: Port Scanner format ('scan_metadata', 'results')
+    elif "results" in data and "scan_metadata" in data:
+        target = data["scan_metadata"].get("target", "unknown_target").strip()
+        for entry in data.get("results", []):
+            sub = (entry.get("subdomain") or "").strip()
+            if not sub:
+                continue
+            subdomains[sub] = {
+                "ip":     (entry.get("ip") or "N/A").strip(),
+                "probes": entry.get("probes") or [],
+            }
+            
+    else:
+        log_error(
+            f"Unknown JSON Schema. Got top-level keys: {set(data.keys())!r}. "
+            "Expected ('subdomains', 'target') or ('results', 'scan_metadata')."
         )
+        sys.exit(1)
 
-    if not data["subdomains"]:
-        sys.exit("[ERROR] 'subdomains' object is empty — nothing to probe.")
+    log_info(f"Target domain    : {target}")
+    log_info(f"Unique subdomains : {len(subdomains)}")
+    return target, subdomains
 
-    return data
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 2 — HTTPX PROCESSING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _parse_httpx_ndjson(stdout: str) -> dict[str, list[dict[str, Any]]]:
+    results: dict[str, list[dict[str, Any]]] = {}
+
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        url: str = obj.get("url", "")
+        host: str = (obj.get("input") or re.sub(r"^https?://", "", url).split(":")[0].rstrip("/")).lstrip("*.")
+
+        status = obj.get("status-code") or obj.get("status_code") or obj.get("statusCode")
+        server = obj.get("webserver") or obj.get("web-server") or (obj.get("headers") or {}).get("server")
+        title = obj.get("title")
+        raw_techs = obj.get("tech") or obj.get("technologies") or []
+        techs = [raw_techs] if isinstance(raw_techs, str) else list(raw_techs)
+
+        probe: dict[str, Any] = {
+            "probed_url":   url,
+            "status_code":  status,
+            "server":       server,
+            "title":        title,
+            "technologies": techs,
+            "error":        None,
+        }
+        results.setdefault(host, []).append(probe)
+        log_ok(f"[httpx]  [{str(status or '?'):>3}]  {url:<65}  title={title or '(none)'}")
+
+    return results
 
 
-def derive_output_path(input_path: str, target: str) -> str:
+def run_httpx(httpx_invoke: str, subdomains: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    log_info(f"[httpx]  Preparing batch run against {len(subdomains)} target(s) …")
+    tmp_path: str | None = None
+
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
+            tmp_path = tmp.name
+            tmp.write("\n".join(subdomains.keys()) + "\n")
+
+        cmd = f'{httpx_invoke} -l "{tmp_path}" -title -tech-detect -status-code -follow-redirects -timeout {HTTPX_PER_HOST} -json -silent'
+        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=HTTPX_BATCH_TIMEOUT)
+
+        if proc.returncode not in (0, 1) or "not recognized" in proc.stderr:
+            log_error(f"[httpx] Execution failure. Stderr: {proc.stderr.strip()}")
+            return {}
+
+        return _parse_httpx_ndjson(proc.stdout)
+
+    except subprocess.TimeoutExpired:
+        log_warn(f"[httpx]  Batch timed out after {HTTPX_BATCH_TIMEOUT}s.")
+        return {}
+    except Exception as exc:
+        log_error(f"[httpx]  Unexpected error: {exc}")
+        return {}
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 3 — WAFW00F INTERROGATION & REWORKED ERROR PARSING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+def _parse_wafw00f(raw: str) -> str:
     """
-    Build the output file path.
-
-    The output file is placed in the *same directory* as the input file so
-    the pair stays co-located on disk.
-
-    Example
-    -------
-    >>> derive_output_path("/tmp/scans/run.json", "example.com")
-    '/tmp/scans/example.com_web_fingerprints.json'
+    Scans for positive vendor signatures and handles dead connection/DNS fallbacks
+    instead of outputting false 'None Detected' responses.
     """
-    directory = os.path.dirname(os.path.abspath(input_path))
-    filename = f"{target}_web_fingerprints.json"
-    return os.path.join(directory, filename)
+    clean_raw = raw.lower()
+    
+    if "connection failed" in clean_raw or "exception" in clean_raw or "error" in clean_raw:
+        return "Unreachable (Conn Failed)"
+    if "dns resolution failed" in clean_raw or "could not be found" in clean_raw:
+        return "Unreachable (DNS Error)"
+
+    for line in raw.splitlines():
+        if "is behind" not in line.lower():
+            continue
+        parts = re.split(r"is behind\s+", line, maxsplit=1, flags=re.IGNORECASE)
+        if len(parts) < 2:
+            continue
+        m = re.match(r"(.+?)\s*(?:\([^)]*\)\s*)?(?:\bWAF\b\.?\s*)?$", parts[1].strip(), re.IGNORECASE)
+        if m:
+            vendor = m.group(1).strip().rstrip(".")
+            if vendor: return vendor
+
+    if re.search(r"does not seem to be behind|no waf detected|not protected", raw, re.IGNORECASE):
+        return "None Detected"
+
+    if "[-]" in raw:
+        return "Unreachable / Host Down"
+
+    return "None Detected"
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+def _wafw00f_worker(wafw00f_invoke: str, subdomain: str) -> tuple[str, str]:
+    target_url = f"http://{subdomain}"
+    cmd = f"{wafw00f_invoke} {target_url}"
 
-def parse_cli() -> argparse.Namespace:
-    """
-    Declare and parse the command-line interface.
-
-    Returns a populated ``argparse.Namespace`` with attributes:
-    ``input_file``, ``concurrency``, ``timeout``.
-    """
-    parser = argparse.ArgumentParser(
-        prog="fingerprint.py",
-        description=(
-            "Web fingerprinting & asset inventory — probes every subdomain "
-            "in an enumeration JSON over HTTP and HTTPS and writes a "
-            "structured report."
-        ),
-        # Append "(default: N)" to each optional arg's help string automatically.
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-
-    # ── Positional ────────────────────────────────────────────────────────
-    parser.add_argument(
-        "input_file",
-        metavar="INPUT_JSON",
-        help="Path to the upstream subdomain enumeration JSON file.",
-    )
-
-    # ── Optional flags ────────────────────────────────────────────────────
-    parser.add_argument(
-        "--concurrency",
-        type=int,
-        default=100,
-        metavar="N",
-        help="Maximum simultaneous in-flight HTTP requests.",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=10.0,
-        metavar="SECS",
-        help="Per-request total timeout in seconds.",
-    )
-
-    args = parser.parse_args()
-
-    # ── Sanity checks ─────────────────────────────────────────────────────
-    if args.concurrency < 1:
-        parser.error("--concurrency must be an integer >= 1.")
-    if args.timeout <= 0:
-        parser.error("--timeout must be a positive number.")
-
-    return args
+    try:
+        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=WAFW00F_TIMEOUT)
+        combined = _strip_ansi(proc.stdout + "\n" + proc.stderr)
+        return subdomain, _parse_wafw00f(combined)
+    except subprocess.TimeoutExpired:
+        return subdomain, "Timeout"
+    except Exception as exc:
+        return subdomain, f"Error: {exc}"
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# REPORT CONSTRUCTOR
+# ─────────────────────────────────────────────────────────────────────────────
 
-async def main() -> None:
-    """
-    Main coroutine.
+def assemble_report(
+    target: str,
+    source_file: str,
+    subdomains: dict[str, dict[str, Any]],
+    httpx_data: dict[str, list[dict[str, Any]]],
+    waf_data: dict[str, str],
+    scan_start: float,
+) -> dict[str, Any]:
+    duration = round(time.time() - scan_start, 2)
+    scanned_at = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
-    Execution flow
-    ──────────────
-    1. Parse CLI args.
-    2. Load and validate the input JSON.
-    3. Print a pre-flight banner.
-    4. Run the async fingerprinting engine.
-    5. Assemble the final report dict.
-    6. Write the report to disk.
-    7. Print a post-scan summary.
-    """
-    args = parse_cli()
-    input_data = load_and_validate_input(args.input_file)
+    all_codes: set[int] = set()
+    all_servers: set[str] = set()
+    all_techs: set[str] = set()
+    all_wafs: set[str] = set()
+    total_probes = ok_probes = 0
+    results_arr: list[dict[str, Any]] = []
 
-    target: str = input_data["target"]
-    subdomains: dict[str, str] = input_data["subdomains"]
-    n_hosts: int = len(subdomains)
-    n_probes: int = n_hosts * len(_SCHEMES)
+    for sub, info in subdomains.items():
+        waf = waf_data.get(sub, "Unknown")
+        all_wafs.add(waf)
 
-    # ── Pre-flight banner ─────────────────────────────────────────────────
-    print("=" * 60)
-    print("  fingerprint.py  — Web Asset Fingerprinting Engine")
-    print("=" * 60)
-    print(f"  Target             : {target}")
-    print(f"  Subdomains loaded  : {n_hosts}")
-    print(f"  Endpoints to probe : {n_probes}  ({'/'.join(_SCHEMES)} × {n_hosts})")
-    print(f"  Concurrency        : {args.concurrency}")
-    print(f"  Timeout            : {args.timeout}s per request")
-    print("=" * 60)
-    print()
+        enriched_probes: list[dict[str, Any]] = []
+        httpx_probes = httpx_data.get(sub, [])
 
-    scan_start = datetime.now(timezone.utc)
+        if httpx_probes:
+            for p in httpx_probes:
+                code = p.get("status_code")
+                server = p.get("server")
+                techs = p.get("technologies") or []
 
-    # ── Execute fingerprinting ────────────────────────────────────────────
-    results = await run_fingerprinting(
-        subdomains,
-        concurrency=args.concurrency,
-        timeout_secs=args.timeout,
-    )
+                total_probes += 1
+                if isinstance(code, int) and 100 <= code < 600:
+                    ok_probes += 1
 
-    scan_end = datetime.now(timezone.utc)
-    elapsed = (scan_end - scan_start).total_seconds()
+                if code is not None: all_codes.add(code)
+                if server:           all_servers.add(server)
+                all_techs.update(techs)
 
-    # ── Assemble the final report ─────────────────────────────────────────
-    summary = build_summary(results)
+                enriched_probes.append({
+                    "probed_url":   p.get("probed_url"),
+                    "status_code":  code,
+                    "server":       server,
+                    "title":        p.get("title"),
+                    "technologies": techs,
+                    "error":        None,
+                })
+        else:
+            for orig in info.get("probes", []):
+                total_probes += 1
+                enriched_probes.append({
+                    "probed_url":   orig.get("probed_url"),
+                    "status_code":  None,
+                    "server":       None,
+                    "title":        None,
+                    "technologies": [],
+                    "error":        orig.get("error") or "Host Unreachable / DNS Resolution Failure",
+                })
 
-    report: dict[str, Any] = {
-        # Tracking metadata — always the first key for quick inspection.
+        results_arr.append({
+            "subdomain":  sub,
+            "ip":         info["ip"],
+            "waf_vendor": waf,
+            "probes":     enriched_probes,
+        })
+
+    return {
         "scan_metadata": {
-            "target": target,
-            "source_file": os.path.abspath(args.input_file),
-            # Pass through the timestamp from the upstream enumerator (if any).
-            "upstream_generated": input_data.get("generated"),
-            "scanned_at": scan_start.strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "scan_duration_seconds": round(elapsed, 3),
-            "total_subdomains": n_hosts,
-            "total_endpoints_probed": n_probes,
-            "concurrency": args.concurrency,
-            "timeout_seconds": args.timeout,
+            "target":                target,
+            "source_file":           str(Path(source_file).resolve()),
+            "scanned_at":            scanned_at,
+            "scan_duration_seconds": duration,
         },
-
-        # Aggregated statistics — useful at a glance without parsing results.
-        "summary": summary,
-
-        # Full per-subdomain probe data.
-        "results": results,
+        "summary": {
+            "total_probes":        total_probes,
+            "successful_probes":   ok_probes,
+            "unique_status_codes": sorted(all_codes),
+            "unique_servers":      sorted(all_servers),
+            "unique_technologies": sorted(all_techs),
+            "observed_waf_types":  sorted(all_wafs),
+        },
+        "results": results_arr,
     }
 
-    # ── Write output JSON ─────────────────────────────────────────────────
-    output_path = derive_output_path(args.input_file, target)
-    with open(output_path, "w", encoding="utf-8") as fh:
-        # indent=2 keeps the file human-readable; ensure_ascii=False preserves
-        # any non-ASCII characters in page titles or server banners.
-        json.dump(report, fh, indent=2, ensure_ascii=False)
 
-    # ── Post-scan summary banner ──────────────────────────────────────────
-    print()
-    print("=" * 60)
-    print(f"  Scan complete in {elapsed:.2f}s")
-    print(f"  Probes         : {summary['successful_probes']} OK  /  "
-          f"{summary['failed_probes']} ERR  /  "
-          f"{summary['total_probes']} total")
-    print(f"  Live hosts     : {', '.join(summary['live_hosts']) or 'none'}")
-    print(f"  Status codes   : {summary['unique_status_codes'] or 'n/a'}")
-    print(f"  Servers        : {', '.join(summary['unique_servers']) or 'none detected'}")
-    print(f"  Technologies   : {', '.join(summary['unique_technologies']) or 'none detected'}")
-    if summary["observed_error_types"]:
-        print(f"  Error types    : {', '.join(summary['observed_error_types'])}")
-    print(f"  Output written : {output_path}")
-    print("=" * 60)
+# ─────────────────────────────────────────────────────────────────────────────
+# ENTRY POINT
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Orchestrator Wrapper")
+    parser.add_argument("--input", "-i", required=True, help="Input JSON file")
+    args = parser.parse_args()
+    scan_start = time.time()
+
+    log_section("recon_pipeline.py  —  Initialising")
+    httpx_invoke, wafw00f_invoke = check_dependencies()
+
+    target, subdomains = load_targets(args.input)
+    if not subdomains:
+        log_error("No targets parsed out. Exiting.")
+        sys.exit(1)
+
+    log_section("Phase 2+3  —  Concurrent httpx & wafw00f")
+    httpx_data: dict[str, list[dict[str, Any]]] = {}
+    waf_data:   dict[str, str]                  = {}
+
+    with ThreadPoolExecutor(max_workers=MAX_WAF_WORKERS + 1) as pool:
+        httpx_future = pool.submit(run_httpx, httpx_invoke, subdomains)
+        waf_futures = {pool.submit(_wafw00f_worker, wafw00f_invoke, sub): sub for sub in subdomains}
+
+        for fut in as_completed(waf_futures):
+            sub, waf = fut.result()
+            waf_data[sub] = waf
+            indicator = " WAF! " if waf not in ("None Detected", "Timeout") and not waf.startswith("Unreachable") else "  ·   "
+            log_info(f"[wafw00f]  {indicator} {sub:<50} -> {waf}")
+
+        httpx_data = httpx_future.result()
+
+    log_section("Phase 4  —  Assembling Final Report")
+    report = assemble_report(target, args.input, subdomains, httpx_data, waf_data, scan_start)
+
+    out_path = Path(f"{_BAD_FNAME_RE.sub('_', target)}_master_recon.json")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2, default=str)
+
+    log_section("Scan Complete")
+    log_ok(f"Output saved → {out_path.resolve()}")
+    print(str(out_path.resolve()), flush=True)
 
 
 if __name__ == "__main__":
-    # asyncio.run() creates a fresh event loop, runs ``main()`` to completion,
-    # then cleanly closes the loop and releases all resources.
-    asyncio.run(main())
+    main()
