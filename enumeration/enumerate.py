@@ -9,7 +9,7 @@ Passive sources (all three run concurrently):
 
 Active validation:
   aiodns  —  event-loop-native DNS via c-ares. No thread pool. No GIL
-              contention. Handles 50k subdomains in seconds, not minutes.
+             contention. Handles 50k subdomains in seconds, not minutes.
 
 Install:
   pip install aiodns aiohttp
@@ -21,6 +21,7 @@ Usage:
 
 import asyncio
 import argparse
+import json
 import logging
 import shutil
 import sys
@@ -245,15 +246,18 @@ async def validate(
 # ---------------------------------------------------------------------------
 
 def save(domain: str, alive: Dict[str, str]) -> Path:
-    path = Path(f"{domain}_alive_subdomains.txt")
+    path = Path(f"{domain}_alive_subdomains.json")
     ts   = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
+    payload = {
+        "target": domain,
+        "generated": ts,
+        "alive_count": len(alive),
+        "subdomains": {k: v for k, v in sorted(alive.items())}
+    }
+
     with path.open("w", encoding="utf-8") as fh:
-        fh.write(f"# target    : {domain}\n")
-        fh.write(f"# generated : {ts}\n")
-        fh.write(f"# alive     : {len(alive)}\n#\n")
-        for sub, ip in sorted(alive.items()):
-            fh.write(f"{sub}  {ip}\n")
+        json.dump(payload, fh, indent=4)
 
     return path.resolve()
 
