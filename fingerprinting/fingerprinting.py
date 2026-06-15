@@ -5,8 +5,8 @@ recon_pipeline.py
 Heavy-duty orchestration wrapper for Windows-based web recon analysts.
 Concurrently routes every subdomain through httpx and wafw00f.
 
-Fixed: Tightened pre-flight checks, modern UTC datetimes, dynamic JSON inputs,
-and proper error handling for unresolvable network targets.
+Fixed: Programmatic native threading for wafw00f, eliminated global 
+batch timeout traps, and stabilized host tracking for external redirects.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -29,10 +29,9 @@ from typing import Any
 # TUNEABLE CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-HTTPX_BATCH_TIMEOUT: int = 120   # seconds — the whole httpx subprocess
-HTTPX_PER_HOST:      int = 15    # seconds — passed to httpx via -timeout flag
-WAFW00F_TIMEOUT:     int = 30    # seconds — per-subdomain wafw00f subprocess
-MAX_WAF_WORKERS:     int = 10    # concurrent wafw00f threads
+HTTPX_PER_HOST:   int = 15    # seconds — passed to httpx via -timeout flag
+WAFW00F_TIMEOUT:  int = 30    # seconds — passed to programmatic wafw00f engine
+MAX_WAF_WORKERS:  int = 10    # concurrent native wafw00f threads
 
 IS_WIN: bool = sys.platform.startswith("win")
 
@@ -81,10 +80,6 @@ def log_error(msg: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _shell_probe(cmd: str) -> bool:
-    """
-    Execute command through the shell. Strictly verifies exit codes and
-    scans stderr strings for hidden OS/Python invocation errors.
-    """
     try:
         proc = subprocess.run(
             cmd,
@@ -96,7 +91,6 @@ def _shell_probe(cmd: str) -> bool:
         if proc.returncode != 0:
             return False
         
-        # Verify stderr for silent execution failures (Windows specific or missing python modules)
         err_msg = (proc.stderr or "").lower()
         if "not recognized" in err_msg or "no module named" in err_msg:
             return False
@@ -122,7 +116,7 @@ def _safe_invoke(binary: str) -> str:
     return binary
 
 
-def check_dependencies() -> tuple[str, str]:
+def check_dependencies() -> tuple[str, bool]:
     log_section("Dependency Pre-flight Check")
 
     # ── httpx Validation ──────────────────────────────────────────────────
@@ -139,26 +133,22 @@ def check_dependencies() -> tuple[str, str]:
             sys.exit(1)
 
     httpx_invoke = _safe_invoke(httpx_bin)
-    log_ok(f"httpx   found  → {shutil.which(httpx_bin) or httpx_bin}")
+    log_ok(f"httpx     found  → {shutil.which(httpx_bin) or httpx_bin}")
 
-    # ── wafw00f Validation ────────────────────────────────────────────────
-    wafw00f_bin = _which_first(["wafw00f", "wafw00f.exe"])
-    wafw00f_invoke = ""
-
-    if wafw00f_bin and _shell_probe(f"{_safe_invoke(wafw00f_bin)} --help"):
-        wafw00f_invoke = _safe_invoke(wafw00f_bin)
-    elif _shell_probe("python -m wafw00f --help"):
-        wafw00f_invoke = "python -m wafw00f"
-    else:
+    # ── wafw00f Programmatic Library Validation ───────────────────────────
+    try:
+        from wafw00f.main import WAFW00F
+        log_ok("wafw00f   found  → Programmatic Python Import Successful")
+        wafw00f_available = True
+    except ImportError:
         log_error(
-            "wafw00f is missing from your active environment.\n"
+            "wafw00f library is missing from your active environment.\n"
             "         Install package via:  pip install wafw00f\n"
             "         Verify via module:    python -m wafw00f --version"
         )
         sys.exit(1)
 
-    log_ok(f"wafw00f found  → {wafw00f_invoke}")
-    return httpx_invoke, wafw00f_invoke
+    return httpx_invoke, wafw00f_available
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -181,7 +171,6 @@ def load_targets(path: str) -> tuple[str, dict[str, dict[str, Any]]]:
     subdomains: dict[str, dict[str, Any]] = {}
     target: str = "unknown_target"
 
-    # SCHEMA A: Subdomain format ('target', 'subdomains')
     if "subdomains" in data:
         target = str(data.get("target", "unknown_target")).strip()
         raw_subs = data.get("subdomains", [])
@@ -202,7 +191,6 @@ def load_targets(path: str) -> tuple[str, dict[str, dict[str, Any]]]:
                         "probes": item.get("probes") or [{"probed_url": f"http://{sub}", "error": None}]
                     }
 
-    # SCHEMA B: Port Scanner format ('scan_metadata', 'results')
     elif "results" in data and "scan_metadata" in data:
         target = data["scan_metadata"].get("target", "unknown_target").strip()
         for entry in data.get("results", []):
@@ -227,7 +215,7 @@ def load_targets(path: str) -> tuple[str, dict[str, dict[str, Any]]]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — HTTPX PROCESSING
+# STEP 2 — HTTPX PROCESSING (FIXED REDIRECT TRACKING)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_httpx_ndjson(stdout: str) -> dict[str, list[dict[str, Any]]]:
@@ -243,7 +231,10 @@ def _parse_httpx_ndjson(stdout: str) -> dict[str, list[dict[str, Any]]]:
             continue
 
         url: str = obj.get("url", "")
-        host: str = (obj.get("input") or re.sub(r"^https?://", "", url).split(":")[0].rstrip("/")).lstrip("*.")
+        
+        # FIX: Explicitly check 'input' to preserve mapping target across redirects
+        raw_input = obj.get("input") or url
+        host: str = re.sub(r"^https?://", "", raw_input).split(":")[0].rstrip("/").lstrip("*.")
 
         status = obj.get("status-code") or obj.get("status_code") or obj.get("statusCode")
         server = obj.get("webserver") or obj.get("web-server") or (obj.get("headers") or {}).get("server")
@@ -275,7 +266,9 @@ def run_httpx(httpx_invoke: str, subdomains: dict[str, Any]) -> dict[str, list[d
             tmp.write("\n".join(subdomains.keys()) + "\n")
 
         cmd = f'{httpx_invoke} -l "{tmp_path}" -title -tech-detect -status-code -follow-redirects -timeout {HTTPX_PER_HOST} -json -silent'
-        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=HTTPX_BATCH_TIMEOUT)
+        
+        # FIX: Removed the hardcoded HTTPX_BATCH_TIMEOUT pool trap to allow native execution lifecycle
+        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
         if proc.returncode not in (0, 1) or "not recognized" in proc.stderr:
             log_error(f"[httpx] Execution failure. Stderr: {proc.stderr.strip()}")
@@ -283,9 +276,6 @@ def run_httpx(httpx_invoke: str, subdomains: dict[str, Any]) -> dict[str, list[d
 
         return _parse_httpx_ndjson(proc.stdout)
 
-    except subprocess.TimeoutExpired:
-        log_warn(f"[httpx]  Batch timed out after {HTTPX_BATCH_TIMEOUT}s.")
-        return {}
     except Exception as exc:
         log_error(f"[httpx]  Unexpected error: {exc}")
         return {}
@@ -298,57 +288,36 @@ def run_httpx(httpx_invoke: str, subdomains: dict[str, Any]) -> dict[str, list[d
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 3 — WAFW00F INTERROGATION & REWORKED ERROR PARSING
+# STEP 3 — PROGRAMMATIC NATIVE WAFW00F (FIXED SUBPROCESS BOTTLENECK)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _strip_ansi(text: str) -> str:
-    return _ANSI_RE.sub("", text)
-
-
-def _parse_wafw00f(raw: str) -> str:
+def _wafw00f_worker(subdomain: str) -> tuple[str, str]:
     """
-    Scans for positive vendor signatures and handles dead connection/DNS fallbacks
-    instead of outputting false 'None Detected' responses.
+    Executes WAFW00F programmatically within native threads, completely 
+    bypassing OS subprocess execution overhead and cleaning error codes cleanly.
     """
-    clean_raw = raw.lower()
-    
-    if "connection failed" in clean_raw or "exception" in clean_raw or "error" in clean_raw:
-        return "Unreachable (Conn Failed)"
-    if "dns resolution failed" in clean_raw or "could not be found" in clean_raw:
-        return "Unreachable (DNS Error)"
-
-    for line in raw.splitlines():
-        if "is behind" not in line.lower():
-            continue
-        parts = re.split(r"is behind\s+", line, maxsplit=1, flags=re.IGNORECASE)
-        if len(parts) < 2:
-            continue
-        m = re.match(r"(.+?)\s*(?:\([^)]*\)\s*)?(?:\bWAF\b\.?\s*)?$", parts[1].strip(), re.IGNORECASE)
-        if m:
-            vendor = m.group(1).strip().rstrip(".")
-            if vendor: return vendor
-
-    if re.search(r"does not seem to be behind|no waf detected|not protected", raw, re.IGNORECASE):
-        return "None Detected"
-
-    if "[-]" in raw:
-        return "Unreachable / Host Down"
-
-    return "None Detected"
-
-
-def _wafw00f_worker(wafw00f_invoke: str, subdomain: str) -> tuple[str, str]:
-    target_url = f"http://{subdomain}"
-    cmd = f"{wafw00f_invoke} {target_url}"
-
     try:
-        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=WAFW00F_TIMEOUT)
-        combined = _strip_ansi(proc.stdout + "\n" + proc.stderr)
-        return subdomain, _parse_wafw00f(combined)
-    except subprocess.TimeoutExpired:
+        from wafw00f.main import WAFW00F
+        import requests
+        
+        # Initialize native engine instance
+        attacker = WAFW00F(target=subdomain, timeout=WAFW00F_TIMEOUT)
+        detected, xurl = attacker.identwaf()
+        
+        if detected:
+            return subdomain, str(detected[0])
+        return subdomain, "None Detected"
+
+    except requests.exceptions.Timeout:
         return subdomain, "Timeout"
-    except Exception as exc:
-        return subdomain, f"Error: {exc}"
+    except requests.exceptions.ConnectionError as exc:
+        # Check underlying network failure constraints accurately without CLI logging checks
+        err_str = str(exc).lower()
+        if "gaierror" in err_str or "not known" in err_str or "dns" in err_str:
+            return subdomain, "Unreachable (DNS Error)"
+        return subdomain, "Unreachable (Conn Failed)"
+    except Exception:
+        return subdomain, "Unreachable / Host Down"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -451,25 +420,26 @@ def main() -> None:
     scan_start = time.time()
 
     log_section("recon_pipeline.py  —  Initialising")
-    httpx_invoke, wafw00f_invoke = check_dependencies()
+    httpx_invoke, wafw00f_available = check_dependencies()
 
     target, subdomains = load_targets(args.input)
     if not subdomains:
         log_error("No targets parsed out. Exiting.")
         sys.exit(1)
 
-    log_section("Phase 2+3  —  Concurrent httpx & wafw00f")
+    log_section("Phase 2+3  —  Concurrent httpx & Programmatic wafw00f")
     httpx_data: dict[str, list[dict[str, Any]]] = {}
     waf_data:   dict[str, str]                  = {}
 
+    # Native programmatic orchestration
     with ThreadPoolExecutor(max_workers=MAX_WAF_WORKERS + 1) as pool:
         httpx_future = pool.submit(run_httpx, httpx_invoke, subdomains)
-        waf_futures = {pool.submit(_wafw00f_worker, wafw00f_invoke, sub): sub for sub in subdomains}
+        waf_futures = {pool.submit(_wafw00f_worker, sub): sub for sub in subdomains}
 
         for fut in as_completed(waf_futures):
             sub, waf = fut.result()
             waf_data[sub] = waf
-            indicator = " WAF! " if waf not in ("None Detected", "Timeout") and not waf.startswith("Unreachable") else "  ·   "
+            indicator = " WAF! " if waf not in ("None Detected", "Timeout") and not waf.startswith("Unreachable") else "  ·     "
             log_info(f"[wafw00f]  {indicator} {sub:<50} -> {waf}")
 
         httpx_data = httpx_future.result()
