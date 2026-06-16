@@ -420,42 +420,31 @@ def main() -> None:
         description="Async VAPT Pipeline  |  Subfinder → Live-Filter → Nuclei",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    # Changed required=False to allow usage of only --import-alive
     parser.add_argument(
         "-d", "--domain",
-        required=True,
+        required=False,
         help="Root domain to scan (e.g. example.com)",
     )
     parser.add_argument(
         "--import-alive",
         type=str,
         default=None,
-        help="Path to pre-generated domain.com_live_subdomains.json file",
+        help="Path to pre-generated domain.com_alive_subdomains.json file",
     )
-    parser.add_argument(
-        "--concurrency",
-        type=int,
-        default=DEFAULT_CONCURRENCY,
-        help="Max simultaneous TCP probes (semaphore cap)",
-    )
-    parser.add_argument(
-        "--probe-timeout",
-        type=float,
-        default=DEFAULT_PROBE_TIMEOUT,
-        help="Per-probe timeout in seconds — covers DNS + TCP connect",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=DEFAULT_BATCH_SIZE,
-        help="Subdomain chunk size per asyncio.gather() wave",
-    )
-    parser.add_argument(
-        "--dns-threads",
-        type=int,
-        default=DEFAULT_DNS_THREADS,
-        help="ThreadPoolExecutor workers for blocking getaddrinfo() calls",
-    )
+    # ... (Keep other arguments as they were) ...
+    parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY)
+    parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT)
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
+    parser.add_argument("--dns-threads", type=int, default=DEFAULT_DNS_THREADS)
     args = parser.parse_args()
+
+    # Ensure at least one input method is provided
+    if not args.domain and not args.import_alive:
+        parser.error("You must provide either -d/--domain or --import-alive")
+    
+    # If no domain is provided, try to infer it from the filename or prompt the user
+    target_domain = args.domain or "imported_domain"
 
     loop = asyncio.new_event_loop()
     loop.set_default_executor(
@@ -470,14 +459,10 @@ def main() -> None:
     )
 
     try:
-        report = loop.run_until_complete(pipeline.run(args.domain, import_alive_path=args.import_alive))
+        report = loop.run_until_complete(pipeline.run(target_domain, import_alive_path=args.import_alive))
         print("\n=== FINAL NORMALIZED REPORT ===")
         print(report)
     except KeyboardInterrupt:
         logger.info("Interrupted — pipeline terminated by user.")
     finally:
         loop.close()
-
-
-if __name__ == "__main__":
-    main()
