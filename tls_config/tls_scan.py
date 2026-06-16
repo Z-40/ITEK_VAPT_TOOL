@@ -6,6 +6,7 @@ import datetime
 import hashlib
 import http.client
 import json
+import os  # Added for absolute pathing and directory handling
 import re
 import socket
 import ssl
@@ -355,41 +356,29 @@ def scan_weak_ciphers(host: str, port: int, timeout: float) -> List[Tuple[str, s
     return found
 
 def check_hsts_and_redirect(host: str, port: int, timeout: float, errors: List[str]) -> Tuple[Dict[str, Any], bool]:
-    """Evaluates HTTP to HTTPS upgrade strategies and HSTS fields across redirection paths."""
     hsts_res = {"enabled": False, "max_age": 0, "subdomains": False, "preload": False}
     redirects_to_https = False
     
-    # Part A: Audit cleartext upgrade path (Port 80)
     try:
         import urllib.request
         import urllib.error
         
-        # Use GET instead of HEAD. WAFs and CDNs frequently drop HEAD requests 
-        # or fail to apply routing/redirect rules to them.
         http_url = f"http://{host}/"
         req = urllib.request.Request(http_url, headers={"User-Agent": f"ssl-scan/{VERSION}"}, method="GET")
-        
-        # Use our unverified context. If the redirect lands on an HTTPS site with a broken cert, 
-        # we still want to successfully acknowledge that the redirect mechanism itself works.
         ctx = _make_ctx()
         
         try:
-            # urlopen automatically handles multi-hop redirects 
-            # (e.g., http://domain.com -> http://www.domain.com -> https://www.domain.com)
             with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
                 if resp.url.startswith("https://"):
                     redirects_to_https = True
         except urllib.error.HTTPError as e:
-            # If the final destination returns a 4xx/5xx (e.g., 403 Forbidden on the HTTPS side)
             if hasattr(e, 'url') and getattr(e, 'url', '').startswith("https://"):
                 redirects_to_https = True
-            # Fallback check for unhandled redirects (e.g., HTTP 308 on older Python versions)
             elif e.headers.get("Location", "").startswith("https://") or e.headers.get("Location", "").startswith("//"):
                 redirects_to_https = True
     except Exception:
         pass
 
-    # Part B: Audit HTTPS headers following redirect structures safely
     try:
         import urllib.request
         url = f"https://{host}:{port}/" if port != 443 else f"https://{host}/"
@@ -728,34 +717,79 @@ def run_scan(host: str, port: int, timeout: float, skip_ciphers: bool = False) -
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="ssl_scan.py — Production-Grade SSL/TLS Security Analyzer Engine")
-    parser.add_argument("host", help="Target evaluation hostname.")
+    parser.add_argument("host", nargs='?', help="Target evaluation hostname (Optional if utilizing --import-alive).")
     parser.add_argument("-p", "--port", type=int, default=443, help="Port pathway (Default target: 443)")
     parser.add_argument("-t", "--timeout", type=float, default=5.0, help="Socket baseline duration limit (Default: 5s)")
-    parser.add_argument("--json", help="Saves report metric structures as JSON data.")
+    parser.add_argument("--json", help="Saves report metrics. If batch processing via --import-alive, this defines the folder or filename prefix.")
     parser.add_argument("--no-cipher-scan", action="store_true", help="Disables deep legacy cipher verification loops.")
+    parser.add_argument("--import-alive", help="Pipeline Hook: Path to a tracking JSON containing live subdomains.")
     args = parser.parse_args()
 
     print_banner()
-    try:
-        res = run_scan(args.host, args.port, args.timeout, skip_ciphers=args.no_cipher_scan)
-    except KeyboardInterrupt:
-        console.print("\n[bold red][!] Evaluation session closed by user execution signal.[/bold red]")
-        sys.exit(130)
 
-    render_target(res)
-    if res.cert_subject: render_certificate(res)
-    render_protocols(res)
-    render_ciphers(res)
-    render_features(res)
-    render_findings(res)
-    render_summary(res)
+    # Step 1: Resolve targets list from command argument variations
+    targets: List[str] = []
+    if args.import_alive:
+        abs_input = os.path.abspath(args.import_alive)
+        if not os.path.exists(abs_input):
+            console.print(f"[bold red][!] Pipeline target mapping error: File not found at {abs_input}[/bold red]")
+            sys.exit(1)
+        try:
+            with open(abs_input, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                targets = list(data.get("subdomains", {}).keys())
+            console.print(f"[bold cyan][*] Pipeline Engine: Extracted {len(targets)} active hosts from tracker.[/bold cyan]")
+        except Exception as e:
+            console.print(f"[bold red][!] Failed to cleanly parse pipeline JSON file: {e}[/bold red]")
+            sys.exit(1)
+    elif args.host:
+        targets = [args.host]
+    else:
+        parser.error("Missing execution targets: Define a standard target 'host' positionally OR map via '--import-alive'.")
 
-    if res.errors:
-        console.print(Panel("\n".join(f"· {e}" for e in res.errors), title="[bold yellow]Scan Trace Errors[/bold yellow]", border_style="yellow", expand=False))
+    # Step 2: Loop execution process through target domains safely
+    for target in targets:
+        console.print(Rule(f"[bold yellow]▶ Processing Pipeline Target: {target} [/bold yellow]", style="yellow"))
+        try:
+            res = run_scan(target, args.port, args.timeout, skip_ciphers=args.no_cipher_scan)
+            
+            # Interactive standard outputs
+            render_target(res)
+            if res.cert_subject: 
+                render_certificate(res)
+            render_protocols(res)
+            render_ciphers(res)
+            render_features(res)
+            render_findings(res)
+            render_summary(res)
 
-    if args.json:
-        with open(args.json, "w", encoding="utf-8") as f:
-            json.dump(dataclasses.asdict(res), f, indent=4, default=str)
+            if res.errors:
+                console.print(Panel("\n".join(f"· {e}" for e in res.errors), title="[bold yellow]Scan Trace Errors[/bold yellow]", border_style="yellow", expand=False))
+
+            # Step 3: Write report records without overwriting batch loops
+            if args.json:
+                # If path string targets explicitly a single JSON extension but we are handling multi-targets
+                if args.json.endswith(".json"):
+                    if len(targets) > 1:
+                        # Append domain differentiator to avoid sequence collision overwrites
+                        out_file = args.json.replace(".json", f"_{target}.json")
+                    else:
+                        out_file = args.json
+                else:
+                    # Treat the argument parameter string explicitly as a directory path
+                    if not os.path.exists(args.json):
+                        os.makedirs(args.json, exist_ok=True)
+                    out_file = os.path.join(args.json, f"{target}_tls_report.json")
+
+                with open(out_file, "w", encoding="utf-8") as f:
+                    json.dump(dataclasses.asdict(res), f, indent=4, default=str)
+                console.print(f"[bold green][+] Metrics database report archived securely at: {out_file}[/bold green]\n")
+
+        except KeyboardInterrupt:
+            console.print("\n[bold red][!] Evaluation session closed by user execution signal.[/bold red]")
+            sys.exit(130)
+        except Exception as exc:
+            console.print(f"[bold red][!] Scanning failure tracking channel target ({target}): {exc}[/bold red]\n")
 
 if __name__ == "__main__":
     main()
