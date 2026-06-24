@@ -1,39 +1,10 @@
-#!/usr/bin/env python3
-"""
-dns_scanner.py  ─  DNS Security Posture Scanner  |  Pipeline Edition
-────────────────────────────────────────────────────────────────────────────────
-Stage input  : <domain>_alive_subdomains.json   (via -i / --input)
-Stage output : <target>_dns_scan.json
-
-Runs 13 DNS / mail posture checks sequentially against every subdomain in the
-input file's "subdomains" object.
-
-Anti-False-Positive Engine (Apex Fallback)
-──────────────────────────────────────────
-Email-policy checks — SPF, DMARC, MTA-STS, TLS-RPT — include an
-organisational-apex fallback.  If a subdomain carries no policy record of its
-own the scanner re-queries the apex domain (from the "target" key) before
-logging a finding.  Inherited corporate policies therefore do NOT generate
-false-positive findings.
-
-Output contract
-───────────────
-Raw findings only.  No severity scoring, risk matrices, or weighted grades.
-"""
-
-import argparse
 import datetime
-import json
-import os
 import socket
-import sys
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Tuple
-
 import dns.query
 import dns.resolver
 import dns.zone
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA MODELS
@@ -222,23 +193,17 @@ def apex_aware_check(
 # SCANNER ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run(domain: str, apex: str) -> SubdomainResult:
-    """
-    Execute all 13 posture checks against *domain*.
-
-    *apex* is the organisational root domain sourced from the 'target' key of
-    the input JSON file.  It is used exclusively by the apex fallback logic for
-    email-policy checks (checks 6, 7, 9, 10).
-    """
+def _audit_subdomain(domain: str, apex: str) -> SubdomainResult:
+    """Execute all 13 posture checks against an individual subdomain string."""
     result = SubdomainResult(
         subdomain=domain,
-        ip="",           # populated by the caller from the input JSON
+        ip="",
         scan_timestamp=datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         finding_count=0,
     )
     findings: List[Finding] = []
 
-    # ── 1. Base Resolution & NS  (setup step; generates no finding) ───────────
+    # ── 1. Base Resolution & NS ───────────────────────────────────────────────
     _, ns_ips = get_ns_records(domain)
 
     # ── 2. Zone Transfer ──────────────────────────────────────────────────────
@@ -325,11 +290,11 @@ def run(domain: str, apex: str) -> SubdomainResult:
             ),
         ))
 
-    # ── 6. SPF  [apex fallback active] ───────────────────────────────────────
+    # ── 6. SPF ───────────────────────────────────────────────────────────────
     spf_ok, spf_evidence = apex_aware_check(
         subdomain=domain,
         apex=apex,
-        query_fqdn_tmpl="{domain}",   # SPF lives directly on the domain's TXT records
+        query_fqdn_tmpl="{domain}",
         prefix="v=spf1",
         label="SPF",
     )
@@ -348,7 +313,7 @@ def run(domain: str, apex: str) -> SubdomainResult:
             ),
         ))
 
-    # ── 7. DMARC  [apex fallback active] ─────────────────────────────────────
+    # ── 7. DMARC ─────────────────────────────────────────────────────────────
     dmarc_ok, dmarc_evidence = apex_aware_check(
         subdomain=domain,
         apex=apex,
@@ -371,7 +336,7 @@ def run(domain: str, apex: str) -> SubdomainResult:
             ),
         ))
 
-    # ── 8. DKIM  (heuristic — subdomain only, no apex fallback) ──────────────
+    # ── 8. DKIM ──────────────────────────────────────────────────────────────
     dkim_found = probe_dkim_selectors(domain)
     if not dkim_found:
         findings.append(Finding(
@@ -391,7 +356,7 @@ def run(domain: str, apex: str) -> SubdomainResult:
             ),
         ))
 
-    # ── 9. MTA-STS  [apex fallback active] ───────────────────────────────────
+    # ── 9. MTA-STS ───────────────────────────────────────────────────────────
     sts_ok, sts_evidence = apex_aware_check(
         subdomain=domain,
         apex=apex,
@@ -415,7 +380,7 @@ def run(domain: str, apex: str) -> SubdomainResult:
             ),
         ))
 
-    # ── 10. TLS-RPT  [apex fallback active] ──────────────────────────────────
+    # ── 10. TLS-RPT ──────────────────────────────────────────────────────────
     rpt_ok, rpt_evidence = apex_aware_check(
         subdomain=domain,
         apex=apex,
@@ -516,17 +481,6 @@ def run(domain: str, apex: str) -> SubdomainResult:
     result.finding_count = len(findings)
     return result
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# I/O  HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def load_input(path: str) -> Dict:
-    """Load and return the parsed alive-subdomains JSON file."""
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
-
-
 def serialise_report(report: ScanReport) -> Dict:
     """Convert the ScanReport dataclass tree into a plain dict for JSON export."""
     return {
@@ -546,104 +500,145 @@ def serialise_report(report: ScanReport) -> Dict:
         ],
     }
 
-
-def write_json(data: Dict, path: str) -> None:
-    """Write *data* as pretty-printed JSON to *path*."""
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="DNS Security Posture Scanner — Pipeline Edition",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Example:\n"
-            "  python dns_scanner.py -i infoteksoftware.com_alive_subdomains.json\n"
-        ),
-    )
-    parser.add_argument(
-        "-i", "--input",
-        required=True,
-        metavar="FILE",
-        help=(
-            "Path to <domain>_alive_subdomains.json produced by the "
-            "subdomain-enumeration stage."
-        ),
-    )
-    args = parser.parse_args()
-
-    # ── Validate input path ──────────────────────────────────────────────────
-    if not os.path.isfile(args.input):
-        print(f"[ERROR] Input file not found: {args.input}", file=sys.stderr)
-        sys.exit(1)
-
-    # ── Parse input JSON ─────────────────────────────────────────────────────
-    try:
-        data = load_input(args.input)
-    except (json.JSONDecodeError, OSError) as exc:
-        print(f"[ERROR] Failed to parse input file: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    target:     str  = data.get("target", "").strip()
-    subdomains: Dict = data.get("subdomains", {})
+def scan_dns(input_json_data: Dict) -> Dict:
+    """
+    Accepts a dictionary representing the input JSON document structure, 
+    executes all 13 sequential configuration probes, and returns a dictionary 
+    matching the output schema requirements.
+    
+    No file writes or configuration changes occur inside this function.
+    """
+    target = input_json_data.get("target", "").strip()
+    subdomains = input_json_data.get("subdomains", {})
 
     if not target:
-        print(
-            "[ERROR] Input JSON is missing the required 'target' field.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise ValueError("Input dataset is missing the required 'target' key.")
     if not subdomains:
-        print(
-            "[ERROR] Input JSON 'subdomains' object is empty or absent.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise ValueError("Input dataset 'subdomains' object is empty or absent.")
 
-    output_path = f"{target}_dns_scan.json"
-
-    # ── Initialise top-level report ──────────────────────────────────────────
+    # Initialize container representation
     report = ScanReport(
         target=target,
         generated=datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
-        source_file=os.path.basename(args.input),
+        source_file="pipeline_memory_buffer",
         subdomain_count=len(subdomains),
     )
 
-    # ── Banner ───────────────────────────────────────────────────────────────
-    print(f"[*] Target         : {target}")
-    print(f"[*] Subdomains     : {len(subdomains)}")
-    print(f"[*] Output file    : {output_path}")
-    print(f"[*] Apex fallback  : SPF, DMARC, MTA-STS, TLS-RPT")
-    print()
-
-    # ── Sequential subdomain scan ─────────────────────────────────────────────
-    total = len(subdomains)
-    for idx, (subdomain, ip) in enumerate(subdomains.items(), start=1):
-        print(
-            f"  [{idx:>{len(str(total))}}/{total}]  {subdomain}  ({ip})",
-            end="  ...",
-            flush=True,
-        )
-        result    = run(subdomain, apex=target)
+    # Core iteration block
+    for subdomain, ip in subdomains.items():
+        result = _audit_subdomain(subdomain, apex=target)
         result.ip = ip
         report.results.append(result)
-        print(f"  {result.finding_count} finding(s)")
 
-    # ── Write output ─────────────────────────────────────────────────────────
-    write_json(serialise_report(report), output_path)
+    # Return serialized plain Python dictionary matching contract requirements
+    return serialise_report(report)
 
-    total_findings = sum(r.finding_count for r in report.results)
-    print()
-    print(f"[+] Scan complete.")
-    print(f"[+] Total findings : {total_findings} across {total} subdomain(s)")
-    print(f"[+] Report written : {output_path}")
+# # ─────────────────────────────────────────────────────────────────────────────
+# # I/O  HELPERS
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# def load_input(path: str) -> Dict:
+#     """Load and return the parsed alive-subdomains JSON file."""
+#     with open(path, "r", encoding="utf-8") as fh:
+#         return json.load(fh)
+
+# def write_json(data: Dict, path: str) -> None:
+#     """Write *data* as pretty-printed JSON to *path*."""
+#     with open(path, "w", encoding="utf-8") as fh:
+#         json.dump(data, fh, indent=2)
 
 
-if __name__ == "__main__":
-    main()
+# # ─────────────────────────────────────────────────────────────────────────────
+# # ENTRY POINT
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# def main() -> None:
+#     parser = argparse.ArgumentParser(
+#         description="DNS Security Posture Scanner — Pipeline Edition",
+#         formatter_class=argparse.RawDescriptionHelpFormatter,
+#         epilog=(
+#             "Example:\n"
+#             "  python dns_scanner.py -i infoteksoftware.com_alive_subdomains.json\n"
+#         ),
+#     )
+#     parser.add_argument(
+#         "-i", "--input",
+#         required=True,
+#         metavar="FILE",
+#         help=(
+#             "Path to <domain>_alive_subdomains.json produced by the "
+#             "subdomain-enumeration stage."
+#         ),
+#     )
+#     args = parser.parse_args()
+
+#     # ── Validate input path ──────────────────────────────────────────────────
+#     if not os.path.isfile(args.input):
+#         print(f"[ERROR] Input file not found: {args.input}", file=sys.stderr)
+#         sys.exit(1)
+
+#     # ── Parse input JSON ─────────────────────────────────────────────────────
+#     try:
+#         data = load_input(args.input)
+#     except (json.JSONDecodeError, OSError) as exc:
+#         print(f"[ERROR] Failed to parse input file: {exc}", file=sys.stderr)
+#         sys.exit(1)
+
+#     target:     str  = data.get("target", "").strip()
+#     subdomains: Dict = data.get("subdomains", {})
+
+#     if not target:
+#         print(
+#             "[ERROR] Input JSON is missing the required 'target' field.",
+#             file=sys.stderr,
+#         )
+#         sys.exit(1)
+#     if not subdomains:
+#         print(
+#             "[ERROR] Input JSON 'subdomains' object is empty or absent.",
+#             file=sys.stderr,
+#         )
+#         sys.exit(1)
+
+#     output_path = f"{target}_dns_scan.json"
+
+#     # ── Initialise top-level report ──────────────────────────────────────────
+#     report = ScanReport(
+#         target=target,
+#         generated=datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+#         source_file=os.path.basename(args.input),
+#         subdomain_count=len(subdomains),
+#     )
+
+#     # ── Banner ───────────────────────────────────────────────────────────────
+#     print(f"[*] Target         : {target}")
+#     print(f"[*] Subdomains     : {len(subdomains)}")
+#     print(f"[*] Output file    : {output_path}")
+#     print(f"[*] Apex fallback  : SPF, DMARC, MTA-STS, TLS-RPT")
+#     print()
+
+#     # ── Sequential subdomain scan ─────────────────────────────────────────────
+#     total = len(subdomains)
+#     for idx, (subdomain, ip) in enumerate(subdomains.items(), start=1):
+#         print(
+#             f"  [{idx:>{len(str(total))}}/{total}]  {subdomain}  ({ip})",
+#             end="  ...",
+#             flush=True,
+#         )
+#         result    = run(subdomain, apex=target)
+#         result.ip = ip
+#         report.results.append(result)
+#         print(f"  {result.finding_count} finding(s)")
+
+#     # ── Write output ─────────────────────────────────────────────────────────
+#     write_json(serialise_report(report), output_path)
+
+#     total_findings = sum(r.finding_count for r in report.results)
+#     print()
+#     print(f"[+] Scan complete.")
+#     print(f"[+] Total findings : {total_findings} across {total} subdomain(s)")
+#     print(f"[+] Report written : {output_path}")
+
+
+# if __name__ == "__main__":
+#     main()
