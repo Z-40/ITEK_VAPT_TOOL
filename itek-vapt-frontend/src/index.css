@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.cyber-input {
+  @apply bg-zinc-950 border border-cyan-500/30 focus:border-cyan-400 rounded-2xl px-6 py-4 text-white outline-none transition-all;
+}
+
+.cyber-button {
+  @apply bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-4 px-8 rounded-2xl transition-all active:scale-95;
+}
