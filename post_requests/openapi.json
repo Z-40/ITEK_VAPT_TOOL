@@ -1,0 +1,29 @@
+{
+  "openapi": "3.0.0",
+  "servers": [
+    {
+      "url": "https://launch.garudavigil.com"
+    }
+  ],
+  "paths": {
+    "/api/replace/with/your/actual/path": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" },
+                  "custom_field_id": { "type": "integer" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
