@@ -2,6 +2,7 @@
 import sys
 import json
 import random
+import os
 from urllib.parse import urlencode, urlparse
 from typing import Dict, Any, List
 
@@ -11,13 +12,10 @@ try:
 except ImportError:
     HAS_YAML = False
 
-DELIMITER = "=" * 70
-
 # ---------------------------------------------------------------------------
 # Spec Parsing from Memory
 # ---------------------------------------------------------------------------
 def parse_raw_spec(spec_content: str) -> dict:
-    """Parses raw text spec string directly from memory."""
     try:
         return json.loads(spec_content)
     except json.JSONDecodeError:
@@ -128,7 +126,6 @@ def extract_json_payload(op: dict, spec: dict) -> str:
     return ""
 
 def extract_form_payload(op: dict, spec: dict) -> str:
-    # OpenAPI 3 requestBody Form Data extraction fallback
     rb = op.get("requestBody")
     if isinstance(rb, dict):
         content = rb.get("content", {})
@@ -139,7 +136,6 @@ def extract_form_payload(op: dict, spec: dict) -> str:
             if isinstance(mock_obj, dict):
                 return urlencode(mock_obj)
 
-    # Swagger 2 parameters matching fallback
     params = op.get("parameters", [])
     if not isinstance(params, list):
         return ""
@@ -161,7 +157,6 @@ def extract_form_payload(op: dict, spec: dict) -> str:
 def build_request_block(path: str, op: dict, spec: dict, host: str, base_path: str) -> str:
     full_path = f"{base_path}{path}"
     
-    # Analyze content targets payload types
     payload = extract_json_payload(op, spec)
     ct = "application/json"
     if not payload:
@@ -197,19 +192,25 @@ def build_request_block(path: str, op: dict, spec: dict, host: str, base_path: s
     return "\n".join(headers) + "\n\n" + payload
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MAIN SYNCHRONOUS IN-MEMORY INTERFACE
+# MAIN SYNCHRONOUS IN-MEMORY INTERFACE WITH DISK WRITE CAPABILITY
 # ─────────────────────────────────────────────────────────────────────────────
-def post_requests(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
+def run(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Accepts a structured payload dictionary containing OpenAPI schema texts or objects,
-    generates live-fidelity browser HTTP POST request traffic mappings completely in-memory,
-    and returns a clean payload metadata dictionary.
+    Accepts a structured payload dictionary containing an OpenAPI specification and 
+    a target output directory path. Generates raw HTTP/1.1 POST blocks and exports 
+    each individual route separately as a clean .txt file inside the folder.
     """
     raw_spec_content = input_json_data.get("spec")
     if not raw_spec_content:
         raise ValueError("Input JSON dataset is missing the mandatory 'spec' parameter key.")
 
-    # Ingestion support for dictionary objects or raw spec string text maps
+    output_dir = input_json_data.get("output_dir", "").strip()
+    if not output_dir:
+        raise ValueError("Input JSON configuration is missing the mandatory 'output_dir' target directory path.")
+
+    # Standardize output landing directory structure
+    os.makedirs(output_dir, exist_ok=True)
+
     if isinstance(raw_spec_content, dict):
         spec = raw_spec_content
     else:
@@ -218,8 +219,8 @@ def post_requests(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
     host = extract_host(spec)
     base_path = extract_base_path(spec)
 
-    blocks = []
-    paths = spec.get("paths", {})\
+    saved_files = []
+    paths = spec.get("paths", {})
 
     if isinstance(paths, dict):
         for path, path_item in paths.items():
@@ -227,10 +228,25 @@ def post_requests(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
                 continue
             op = path_item.get("post")
             if op and isinstance(op, dict):
-                blocks.append(build_request_block(path, op, spec, host, base_path))
+                # Format raw request block string text
+                block_content = build_request_block(path, op, spec, host, base_path)
+                
+                # Sanitize endpoint path to build a safe local file name string
+                safe_name = path.strip("/").replace("/", "_").replace("{", "").replace("}", "")
+                if not safe_name:
+                    safe_name = "root_post"
+                
+                file_path = os.path.join(output_dir, f"post_{safe_name}.txt")
+                
+                # Commit individual output track record to disk
+                with open(file_path, "w", encoding="utf-8") as fh:
+                    fh.write(block_content)
+                    
+                saved_files.append(os.path.abspath(file_path))
 
     return {
         "status": "success",
-        "total_post_routes_found": len(blocks),
-        "generated_request_blocks": blocks
+        "total_post_routes_found": len(saved_files),
+        "output_directory": os.path.abspath(output_dir),
+        "generated_files": saved_files
     }
