@@ -1,20 +1,9 @@
 #!/usr/bin/env python3
-"""
-gen_requests.py — OpenAPI/Swagger → Live-Fidelity Browser HTTP POST Generator
----------------------------------------------------------------------
-Parses a local OpenAPI 3.x or Swagger 2.x spec and emits raw HTTP/1.1
-POST request blocks modeled after authentic Google Chrome browser traffic.
-
-Usage:
-    python3 gen_requests.py <spec.json|spec.yaml>
-    python3 gen_requests.py <spec.json|spec.yaml> --output requests.txt
-"""
-
 import sys
 import json
 import random
-import argparse
 from urllib.parse import urlencode, urlparse
+from typing import Dict, Any, List
 
 try:
     import yaml
@@ -25,17 +14,15 @@ except ImportError:
 DELIMITER = "=" * 70
 
 # ---------------------------------------------------------------------------
-# Spec loading
+# Spec Parsing from Memory
 # ---------------------------------------------------------------------------
-
-def load_spec(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as f:
-        raw = f.read()
+def parse_raw_spec(spec_content: str) -> dict:
+    """Parses raw text spec string directly from memory."""
     try:
-        return json.loads(raw)
+        return json.loads(spec_content)
     except json.JSONDecodeError:
         if HAS_YAML:
-            return yaml.safe_load(raw)
+            return yaml.safe_load(spec_content)
         raise RuntimeError(
             "Spec appears to be YAML but PyYAML is not installed.\n"
             "Run: pip install pyyaml"
@@ -44,242 +31,206 @@ def load_spec(path: str) -> dict:
 # ---------------------------------------------------------------------------
 # Host extraction
 # ---------------------------------------------------------------------------
-
 def extract_host(spec: dict) -> str:
-    # OpenAPI 3.x
-    servers = spec.get("servers", [])
-    if servers:
-        url = servers[0].get("url", "")
-        parsed = urlparse(url)
-        return parsed.netloc or url.split("/")[0]
-    # Swagger 2.x
-    return spec.get("host", "api.target.com")
+    if "servers" in spec and isinstance(spec["servers"], list) and len(spec["servers"]) > 0:
+        url = spec["servers"][0].get("url", "")
+        if url:
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            parsed = urlparse(url)
+            if parsed.netloc:
+                return parsed.netloc
+    return spec.get("host", "api.example.com")
 
 def extract_base_path(spec: dict) -> str:
-    return spec.get("basePath", "")
+    if "servers" in spec and isinstance(spec["servers"], list) and len(spec["servers"]) > 0:
+        url = spec["servers"][0].get("url", "")
+        if url and url.startswith(("http://", "https://")):
+            parsed = urlparse(url)
+            return parsed.path.rstrip("/")
+    return spec.get("basePath", "").rstrip("/")
 
 # ---------------------------------------------------------------------------
-# $ref resolution
+# Mock data generators
 # ---------------------------------------------------------------------------
-
 def resolve_ref(ref: str, spec: dict) -> dict:
-    parts = ref.lstrip("#/").split("/")
-    node = spec
-    for part in parts:
-        if not isinstance(node, dict):
-            return {}
-        node = node.get(part, {})
-    return node if isinstance(node, dict) else {}
-
-def resolve(schema: dict, spec: dict) -> dict:
-    if "$ref" in schema:
-        return resolve(resolve_ref(schema["$ref"], spec), spec)
-    return schema
-
-# ---------------------------------------------------------------------------
-# High-Fidelity Data Generation Heuristics
-# ---------------------------------------------------------------------------
-
-def generate_realistic_value(key: str, schema: dict, spec: dict):
-    """
-    Returns realistic, context-aware user inputs instead of placeholder blocks.
-    """
-    schema = resolve(schema, spec)
-    k = key.lower()
-    t = schema.get("type", "string")
-    enum = schema.get("enum")
-
-    if enum:
-        return enum[0]
-
-    # --- String Context Identification Rules ---
-    if any(x in k for x in ["email", "mail"]):
-        return random.choice(["johndoe@gmail.com", "alex.smith@yahoo.com", "user.test@outlook.com"])
-    if any(x in k for x in ["password", "pwd", "pass", "secret"]):
-        return "SecurePassword1!"
-    if any(x in k for x in ["username", "user_name", "login"]):
-        return "johndoe88"
-    if any(x in k for x in ["phone", "mobile", "tel"]):
-        return "555-0199"
-    if any(x in k for x in ["firstname", "first_name"]):
-        return "John"
-    if any(x in k for x in ["lastname", "last_name", "surname"]):
-        return "Doe"
-    if "name" in k:
-        return "John Doe"
-    if any(x in k for x in ["url", "link", "href", "uri"]):
-        return "https://example.com/profile"
-    if any(x in k for x in ["date", "timestamp", "created", "updated"]):
-        return "2026-03-15T10:30:00Z"
-    if any(x in k for x in ["token", "jwt", "key", "auth", "bearer"]):
-        return "bearer_tok_sandbox8839"
-    if any(x in k for x in ["address", "street", "city"]):
-        return "123 Main Street"
-    if any(x in k for x in ["description", "comment", "note", "message", "body", "text", "content"]):
-        return "Looks good, please proceed with processing."
-
-    # --- Non-String Primitive Identifiers ---
-    if t in ("integer", "number"):
-        if "age" in k: return random.randint(22, 45)
-        if "id" in k: return random.randint(10000, 99999)
-        if "amount" in k or "price" in k: return random.randint(10, 250)
-        return 100
-    if t == "boolean":
-        if "confirm" in k or "agree" in k: return True
-        return random.choice([True, False])
-    if t == "array":
-        items_schema = schema.get("items", {})
-        return [generate_realistic_value("item", items_schema, spec)]
-    if t == "object":
-        return build_object(schema, spec)
-
-    return f"valid_{key}_val"
-
-def build_object(schema: dict, spec: dict) -> dict:
-    schema = resolve(schema, spec)
-    props = schema.get("properties", {})
-    if not props:
+    if not ref.startswith("#/"):
         return {}
-    return {k: generate_realistic_value(k, v, spec) for k, v in props.items()}
+    parts = ref.split("/")[1:]
+    current = spec
+    for p in parts:
+        if isinstance(current, dict) and p in current:
+            current = current[p]
+        else:
+            return {}
+    return current if isinstance(current, dict) else {}
 
-def build_body(schema: dict, spec: dict):
-    schema = resolve(schema, spec)
-    t = schema.get("type", "object")
-    if t == "array":
+def generate_mock_value(schema: dict, spec: dict, depth: int = 0) -> Any:
+    if depth > 5:
+        return None
+        
+    if "$ref" in schema:
+        resolved = resolve_ref(schema["$ref"], spec)
+        return generate_mock_value(resolved, spec, depth + 1)
+        
+    t = schema.get("type")
+    
+    if "example" in schema:
+        return schema["example"]
+    if "default" in schema:
+        return schema["default"]
+    if "enum" in schema and isinstance(schema["enum"], list) and len(schema["enum"]) > 0:
+        return random.choice(schema["enum"])
+
+    if t == "string":
+        fmt = schema.get("format", "")
+        if fmt == "date-time":
+            return "2026-06-24T11:58:00.000Z"
+        if fmt == "date":
+            return "2026-06-24"
+        if fmt == "uuid":
+            return "123e4567-e89b-12d3-a456-426614174000"
+        if fmt == "email":
+            return "user@example.com"
+        return "string_data"
+        
+    elif t == "integer" or t == "number":
+        return 1
+        
+    elif t == "boolean":
+        return True
+        
+    elif t == "array":
         items = schema.get("items", {})
-        return [build_body(items, spec)]
-    return build_object(schema, spec)
+        return [generate_mock_value(items, spec, depth + 1)]
+        
+    elif t == "object" or "properties" in schema:
+        obj = {}
+        props = schema.get("properties", {})
+        for k, v in props.items():
+            if isinstance(v, dict):
+                obj[k] = generate_mock_value(v, spec, depth + 1)
+        return obj
+        
+    return "data"
+
+def extract_json_payload(op: dict, spec: dict) -> str:
+    rb = op.get("requestBody")
+    if not isinstance(rb, dict):
+        return ""
+    content = rb.get("content", {})
+    json_media = content.get("application/json", {})
+    schema = json_media.get("schema")
+    if isinstance(schema, dict):
+        mock_obj = generate_mock_value(schema, spec)
+        if mock_obj is not None:
+            return json.dumps(mock_obj, indent=2)
+    return ""
+
+def extract_form_payload(op: dict, spec: dict) -> str:
+    # OpenAPI 3 requestBody Form Data extraction fallback
+    rb = op.get("requestBody")
+    if isinstance(rb, dict):
+        content = rb.get("content", {})
+        form_media = content.get("application/x-www-form-urlencoded", {})
+        schema = form_media.get("schema")
+        if isinstance(schema, dict):
+            mock_obj = generate_mock_value(schema, spec)
+            if isinstance(mock_obj, dict):
+                return urlencode(mock_obj)
+
+    # Swagger 2 parameters matching fallback
+    params = op.get("parameters", [])
+    if not isinstance(params, list):
+        return ""
+    form_data = {}
+    for p in params:
+        if not isinstance(p, dict):
+            continue
+        if p.get("in") == "formData":
+            name = p.get("name")
+            if name:
+                form_data[name] = generate_mock_value(p, spec)
+    if form_data:
+        return urlencode(form_data)
+    return ""
 
 # ---------------------------------------------------------------------------
-# Request body extraction (OpenAPI 3.x and Swagger 2.x)
+# Traffic modeling builders
 # ---------------------------------------------------------------------------
+def build_request_block(path: str, op: dict, spec: dict, host: str, base_path: str) -> str:
+    full_path = f"{base_path}{path}"
+    
+    # Analyze content targets payload types
+    payload = extract_json_payload(op, spec)
+    ct = "application/json"
+    if not payload:
+        payload = extract_form_payload(op, spec)
+        ct = "application/x-www-form-urlencoded"
+    if not payload:
+        payload = "{}"
+        ct = "application/json"
 
-PREFERRED_CONTENT_TYPES = [
-    "application/json",
-    "application/x-www-form-urlencoded",
-    "multipart/form-data",
-]
+    cl = len(payload.encode("utf-8"))
 
-def get_body(operation: dict, spec: dict) -> tuple:
-    req_body = operation.get("requestBody", {})
-    if req_body:
-        if "$ref" in req_body:
-            req_body = resolve_ref(req_body["$ref"], spec)
-        content = req_body.get("content", {})
-        for ct in PREFERRED_CONTENT_TYPES:
-            if ct in content:
-                schema = content[ct].get("schema", {})
-                return ct, build_body(schema, spec)
-        for ct, ct_obj in content.items():
-            schema = ct_obj.get("schema", {})
-            return ct, build_body(schema, spec)
-
-    for p in operation.get("parameters", []):
-        if p.get("in") == "body":
-            schema = p.get("schema", {})
-            return "application/json", build_body(schema, spec)
-
-    form_params = [p for p in operation.get("parameters", []) if p.get("in") == "formData"]
-    if form_params:
-        body = {}
-        for p in form_params:
-            schema = p.get("schema", {"type": p.get("type", "string")})
-            body[p["name"]] = generate_realistic_value(p["name"], schema, spec)
-        uses = operation.get("consumes", spec.get("consumes", ["application/json"]))
-        ct = "multipart/form-data" if "multipart/form-data" in uses else "application/x-www-form-urlencoded"
-        return ct, body
-
-    return "application/json", {}
-
-# ---------------------------------------------------------------------------
-# Payload serialisation
-# ---------------------------------------------------------------------------
-
-def serialise(content_type: str, body) -> str:
-    if content_type == "application/json":
-        return json.dumps(body, separators=(",", ":"))
-    if content_type in ("application/x-www-form-urlencoded", "multipart/form-data"):
-        flat = {k: str(v) for k, v in body.items()} if isinstance(body, dict) else {}
-        return urlencode(flat)
-    return json.dumps(body, separators=(",", ":"))
-
-# ---------------------------------------------------------------------------
-# Desktop Google Chrome Request Assembly
-# ---------------------------------------------------------------------------
-
-def build_request_block(path: str, operation: dict, spec: dict,
-                        host: str, base_path: str) -> str:
-    full_path = (base_path.rstrip("/") + "/" + path.lstrip("/")) or path
-
-    content_type, body = get_body(operation, spec)
-    payload = serialise(content_type, body)
-    content_length = len(payload.encode("utf-8"))
-
-    # Compilation of native desktop Google Chrome system headers
     headers = [
         f"POST {full_path} HTTP/1.1",
         f"Host: {host}",
-        f"Connection: keep-alive",
-        f"Content-Length: {content_length}",
-        f'sec-ch-ua: "Not A(A:Brand";v="99", "Google Chrome";v="149", "Chromium";v="149"',
-        f"sec-ch-ua-mobile: ?0",
-        f"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-        f"Content-Type: {content_type}",
-        f"Accept: application/json, text/plain, */*",
-        f'sec-ch-ua-platform: "Windows"',
-        f"Origin: https://{host}",
-        f"Sec-Fetch-Site: same-origin",
-        f"Sec-Fetch-Mode: cors",
-        f"Sec-Fetch-Dest: empty",
-        f"Referer: https://{host}{full_path}",
-        f"Accept-Encoding: gzip, deflate, br",
-        f"Accept-Language: en-US,en;q=0.9",
+        "Connection: keep-alive",
+        f"Content-Length: {cl}",
+        "sec-ch-ua: \"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"",
+        "sec-ch-ua: ?0",
+        "sec-ch-ua-mobile: ?0",
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        f"Content-Type: {ct}",
+        "Accept: application/json, text/plain, */*",
+        "sec-ch-ua-platform: \"Windows\"",
+        "Origin: https://" + host,
+        "Sec-Fetch-Site: same-origin",
+        "Sec-Fetch-Mode: cors",
+        "Sec-Fetch-Dest: empty",
+        "Referer: https://" + host + full_path,
+        "Accept-Encoding: gzip, deflate, br",
+        "Accept-Language: en-US,en;q=0.9",
     ]
 
     return "\n".join(headers) + "\n\n" + payload
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN SYNCHRONOUS IN-MEMORY INTERFACE
+# ─────────────────────────────────────────────────────────────────────────────
+def post_requests(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Accepts a structured payload dictionary containing OpenAPI schema texts or objects,
+    generates live-fidelity browser HTTP POST request traffic mappings completely in-memory,
+    and returns a clean payload metadata dictionary.
+    """
+    raw_spec_content = input_json_data.get("spec")
+    if not raw_spec_content:
+        raise ValueError("Input JSON dataset is missing the mandatory 'spec' parameter key.")
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Generate clean, realistic browser HTTP POST requests from an OpenAPI/Swagger spec."
-    )
-    parser.add_argument("spec", help="Path to OpenAPI/Swagger JSON or YAML file")
-    parser.add_argument(
-        "--output", "-o", default=None,
-        help="Write output to this file instead of stdout"
-    )
-    args = parser.parse_args()
+    # Ingestion support for dictionary objects or raw spec string text maps
+    if isinstance(raw_spec_content, dict):
+        spec = raw_spec_content
+    else:
+        spec = parse_raw_spec(str(raw_spec_content))
 
-    spec = load_spec(args.spec)
     host = extract_host(spec)
     base_path = extract_base_path(spec)
 
     blocks = []
-    paths = spec.get("paths", {})
+    paths = spec.get("paths", {})\
 
-    for path, path_item in paths.items():
-        if not isinstance(path_item, dict):
-            continue
-        op = path_item.get("post")
-        if op and isinstance(op, dict):
-            blocks.append(build_request_block(path, op, spec, host, base_path))
+    if isinstance(paths, dict):
+        for path, path_item in paths.items():
+            if not isinstance(path_item, dict):
+                continue
+            op = path_item.get("post")
+            if op and isinstance(op, dict):
+                blocks.append(build_request_block(path, op, spec, host, base_path))
 
-    if not blocks:
-        print("No POST routes found in specification.", file=sys.stderr)
-        sys.exit(0)
-
-    separator = f"\n{DELIMITER}\n"
-    output = separator.join(blocks)
-
-    if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(output)
-        print(f"Written {len(blocks)} request(s) to {args.output}", file=sys.stderr)
-    else:
-        print(output)
-
-if __name__ == "__main__":
-    main()
+    return {
+        "status": "success",
+        "total_post_routes_found": len(blocks),
+        "generated_request_blocks": blocks
+    }
