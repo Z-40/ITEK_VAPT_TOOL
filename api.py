@@ -54,8 +54,8 @@ async def port_scan(req: TargetRequest):
 @app.post("/api/recon/dns-scan")
 async def dns_scan(req: TargetRequest):
     try:
-        from features.recon.dns_scan import run_dns_scan
-        return run_dns_scan(req.target)
+        from features.recon.dns_scan import scan_dns
+        return scan_dns(req.target)
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 
@@ -127,20 +127,20 @@ def run_sqli_task(request_dir: str, workers: int):
         print(f"SQLi background task error: {e}")
 
 # ====================== Post Requests ======================
-@app.post("/api/post-requests/scan")
-async def post_requests_scan(req: PostRequestScan):
-    try:
-        from features.post_requests.post_requests import run_post_requests
-        return run_post_requests(req.openapi_path, req.target_url)
-    except Exception as e:
-        raise HTTPException(500, detail=str(e))
+# @app.post("/api/post-requests/scan")
+# async def post_requests_scan(req: PostRequestScan):
+#     try:
+#         from features.post_requests.post_requests import run_post_requests
+#         return run_post_requests(req.openapi_path, req.target_url)
+#     except Exception as e:
+#         raise HTTPException(500, detail=str(e))
 
 # ====================== CVE / DAST ======================
 @app.post("/api/cve-dast/detect")
 async def cve_dast_detect(target: str):
     try:
-        from cve_dast.detector import run_cve_detection
-        return run_cve_detection(target)
+        from features.cve_dast.detector import run_cve
+        return run_cve(target)
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 

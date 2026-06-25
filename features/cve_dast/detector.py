@@ -685,7 +685,7 @@ class VAPTPipeline:
 
     # ── orchestration ─────────────────────────────────────────────────────────
 
-    async def run(                                                  # ← MODIFIED
+    async def run_cve(                                                  # ← MODIFIED
         self,
         domain: str,
         subdomain_ip_map: Optional[Dict[str, str]] = None,
