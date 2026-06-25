@@ -23,11 +23,11 @@ app.add_middleware(
 async def get_index():
     pass
 
-@app.get("/login")
-async def get_login_():
+@app.post("/login")
+async def get_login():
     pass
 
-@app.get("/signup")
+@app.post("/signup")
 async def get_signup():
     pass
 
@@ -37,6 +37,14 @@ async def get_user(username: str):
 
 @app.get("/{username}/{project}")
 async def get_project(username: str, project: str):
+    pass
+
+@app.get("/{username}/{project}/vault")
+async def get_project_vault(username: str, project: str):
+    pass
+
+@app.get("/{username}/{project}/reports")
+async def get_project_reports(username: str, project: str):
     pass
 
 @app.get("/{username}/{project}/{scan}")
