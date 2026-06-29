@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -6,30 +6,57 @@ from typing import List, Optional, Any
 
 app = FastAPI(title="ITEK VAPT Tool API", version="1.0")
 
-# CORS (Update for Vercel) 
+# CORS (Configured for local development talking to React) 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Vercel URL in production, e.g. ["https://your-frontend.vercel.app"]
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Models
-# add shit here
+# Models[cite: 1]
+class UserAuth(BaseModel):
+    email: str
+    password: str
 
-# Routing 
+# Temporary in-memory user tracking storage
+users_db = {}
+
+# Routing[cite: 1]
 @app.get("/")
 async def get_index():
-    pass
+    return {"status": "API is online"}
 
 @app.post("/login")
-async def get_login():
-    pass
+async def get_login(credentials: UserAuth):
+    email = credentials.email
+    password = credentials.password
+
+    # Validation check
+    if email not in users_db or users_db[email] != password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid email or password"
+        )
+    
+    return {"message": "Login successful", "user": email}
 
 @app.post("/signup")
-async def get_signup():
-    pass
+async def get_signup(credentials: UserAuth):
+    email = credentials.email
+    password = credentials.password
+
+    # Check duplication
+    if email in users_db:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="An account with this email already exists"
+        )
+    
+    # Save user credentials simply
+    users_db[email] = password
+    return {"message": "Registration successful"}
 
 @app.get("/{username}")
 async def get_user(username: str):
