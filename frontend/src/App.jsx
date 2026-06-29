@@ -427,17 +427,64 @@ function CTABand({ setView }) {
 }
 
 /* ---------------------------------------------------------------- */
-/* Auth Page (Login / Signup Component)                             */
+/* Auth Page (Updated for Username Processing)                      */
 /* ---------------------------------------------------------------- */
 
 function AuthPage({ view, setView }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  
+  // New operational state slot for username tracking[cite: 2]
+  const [username, setUsername] = useState("");
+  
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log(`${view === "login" ? "Logging in" : "Signing up"}:`, { email, password });
+    setLoading(true);
+    setError(null);
+
+    const targetEndpoint = view === "login" ? "/login" : "/signup";
+
+    // Build payload object conditionally[cite: 2]
+    const payload = view === "login" 
+      ? { email, password } 
+      : { email, username, password };
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000${targetEndpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Authentication sequence failed.");
+      }
+
+      if (view === "login") {
+        alert(`Success: Login successful! Welcome back, ${data.user}`);
+        setView("landing"); //[cite: 2]
+      } else {
+        alert("Registration complete! Please log in with your credentials.");
+        setView("login"); //[cite: 2]
+      }
+      
+      // Reset tracking variables[cite: 2]
+      setEmail("");
+      setUsername("");
+      setPassword("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -453,15 +500,38 @@ function AuthPage({ view, setView }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {error && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-center font-mono text-xs text-red-400">
+              {error}
+            </div>
+          )}
+
+          {/* Conditional Rendering Block: Only shows input when performing registration layout tasks[cite: 2] */}
+          {view === "signup" && (
+            <div>
+              <label className="block font-mono text-xs text-gray-400 uppercase tracking-wider mb-2">Username</label>
+              <input
+                type="text"
+                required
+                disabled={loading}
+                placeholder="cyber_expert"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 font-mono text-sm text-white placeholder-gray-600 outline-none transition focus:border-emerald-400/40 focus:ring-1 focus:ring-emerald-400/40 disabled:opacity-50"
+              />
+            </div>
+          )}
+
           <div>
             <label className="block font-mono text-xs text-gray-400 uppercase tracking-wider mb-2">Email</label>
             <input
               type="email"
               required
+              disabled={loading}
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 font-mono text-sm text-white placeholder-gray-600 outline-none transition focus:border-emerald-400/40 focus:ring-1 focus:ring-emerald-400/40"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 font-mono text-sm text-white placeholder-gray-600 outline-none transition focus:border-emerald-400/40 focus:ring-1 focus:ring-emerald-400/40 disabled:opacity-50"
             />
           </div>
 
@@ -471,23 +541,29 @@ function AuthPage({ view, setView }) {
               <input
                 type={showPassword ? "text" : "password"}
                 required
+                disabled={loading}
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.02] pl-4 pr-11 py-3 font-mono text-sm text-white placeholder-gray-600 outline-none transition focus:border-emerald-400/40 focus:ring-1 focus:ring-emerald-400/40"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.02] pl-4 pr-11 py-3 font-mono text-sm text-white placeholder-gray-600 outline-none transition focus:border-emerald-400/40 focus:ring-1 focus:ring-emerald-400/40 disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                disabled={loading}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 disabled:opacity-50"
               >
                 {showPassword ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
               </button>
             </div>
           </div>
 
-          <button type="submit" className="w-full rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-3.5 font-mono text-sm font-bold text-black transition hover:brightness-110 focus:outline-none">
-            {view === "login" ? "Log In" : "Sign Up"}
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-3.5 font-mono text-sm font-bold text-black transition hover:brightness-110 focus:outline-none disabled:opacity-50"
+          >
+            {loading ? "Processing..." : (view === "login" ? "Log In" : "Sign Up")}
           </button>
         </form>
 
@@ -495,14 +571,22 @@ function AuthPage({ view, setView }) {
           {view === "login" ? (
             <p>
               New user?{" "}
-              <button onClick={() => setView("signup")} className="text-emerald-400 hover:underline bg-transparent border-none p-0 cursor-pointer">
+              <button 
+                onClick={() => { setView("signup"); setError(null); }} 
+                disabled={loading}
+                className="text-emerald-400 hover:underline bg-transparent border-none p-0 cursor-pointer disabled:opacity-50"
+              >
                 Sign up
               </button>
             </p>
           ) : (
             <p>
               Already have an account?{" "}
-              <button onClick={() => setView("login")} className="text-emerald-400 hover:underline bg-transparent border-none p-0 cursor-pointer">
+              <button 
+                onClick={() => { setView("login"); setError(null); }} 
+                disabled={loading}
+                className="text-emerald-400 hover:underline bg-transparent border-none p-0 cursor-pointer disabled:opacity-50"
+              >
                 Log in
               </button>
             </p>
@@ -512,6 +596,7 @@ function AuthPage({ view, setView }) {
     </section>
   );
 }
+
 
 /* ---------------------------------------------------------------- */
 /* Footer                                                           */
