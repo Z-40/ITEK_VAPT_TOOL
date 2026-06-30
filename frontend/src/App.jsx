@@ -4,106 +4,23 @@ import { useState, useEffect, useRef } from "react";
 /* Icons (inline SVG)                                               */
 /* ---------------------------------------------------------------- */
 
-function IconRadar({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={className}>
-      <circle cx="12" cy="12" r="9" strokeOpacity="0.9" />
-      <circle cx="12" cy="12" r="5" strokeOpacity="0.5" />
-      <path d="M12 12V4" strokeLinecap="round" />
-      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function IconBracket({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M9 18 5 12 9 6" />
-      <path d="M15 6l4 6-4 6" />
-    </svg>
-  );
-}
-
-function IconShieldCheck({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M12 3l7 3v6c0 5-3.2 7.8-7 9-3.8-1.2-7-4-7-9V6z" />
-      <path d="M9 12.2l2 2 4-4.4" />
-    </svg>
-  );
-}
-
-function IconBug({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M9 7V5a3 3 0 0 1 6 0v2" />
-      <rect x="6" y="7" width="12" height="11" rx="5.5" />
-      <path d="M6 12H3M21 12h-3M8 4 6 2M16 4l2-2M9 18l-2 2M15 18l2 2" />
-    </svg>
-  );
-}
-
-function IconTarget({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={className}>
-      <circle cx="12" cy="12" r="8" />
-      <circle cx="12" cy="12" r="4" />
-      <circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none" />
-      <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function IconLockBox({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-
-function IconUploadCloud({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-    </svg>
-  );
-}
-
-function IconDocFile({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <polyline points="10 9 9 9 8 9" />
-    </svg>
-  );
-}
-
-function IconTrashCan({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      <line x1="10" y1="11" x2="10" y2="17" />
-      <line x1="14" y1="11" x2="14" y2="17" />
-    </svg>
-  );
-}
+function IconRadar({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={className}><circle cx="12" cy="12" r="9" strokeOpacity="0.9" /><circle cx="12" cy="12" r="5" strokeOpacity="0.5" /><path d="M12 12V4" strokeLinecap="round" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /></svg>; }
+function IconBracket({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9 18 5 12 9 6" /><path d="M15 6l4 6-4 6" /></svg>; }
+function IconShieldCheck({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 3l7 3v6c0 5-3.2 7.8-7 9-3.8-1.2-7-4-7-9V6z" /><path d="M9 12.2l2 2 4-4.4" /></svg>; }
+function IconBug({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9 7V5a3 3 0 0 1 6 0v2" /><rect x="6" y="7" width="12" height="11" rx="5.5" /><path d="M6 12H3M21 12h-3M8 4 6 2M16 4l2-2M9 18l-2 2M15 18l2 2" /></svg>; }
+function IconTarget({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={className}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none" /><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" strokeLinecap="round" /></svg>; }
+function IconLockBox({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>; }
+function IconUploadCloud({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>; }
+function IconDocFile({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>; }
+function IconTrashCan({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>; }
+function IconGlobe({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /><path d="M2 12h20" /></svg>; }
+function IconFlame({ className }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" /></svg>; }
 
 /* ---------------------------------------------------------------- */
 /* Context Configuration Constants                                  */
 /* ---------------------------------------------------------------- */
 
-const NAV_LINKS = [
-  { href: "#capabilities", label: "Capabilities" },
-  { href: "#demo", label: "Live demo" },
-  { href: "#", label: "Docs" },
-];
-
+const NAV_LINKS = [{ href: "#capabilities", label: "Capabilities" }, { href: "#demo", label: "Live demo" }, { href: "#", label: "Docs" }];
 const FEATURES = [
   { n: "01", cmd: "itek recon --target acme.io", title: "Recon", desc: "Map subdomains, DNS records, open ports, and service fingerprints before touching an endpoint.", icon: IconRadar },
   { n: "02", cmd: "itek inject --engine sqlmap+", title: "SQL Injection", desc: "Boolean, time-based, and union-based injection testing across every form parameters and API field.", icon: IconBracket },
@@ -111,20 +28,16 @@ const FEATURES = [
   { n: "04", cmd: "itek DAST --crawl-depth 5", title: "DAST Engine", desc: "Crawl and fuzz operational infrastructure workflows for authentication bypasses, XSS, and IDOR vulnerabilities.", icon: IconBug },
   { n: "05", cmd: "itek exploit --confirm-only", title: "Exploitation Matrix", desc: "Verify active vectors with secure confirm-only payloads to eliminate false positives cleanly.", icon: IconTarget },
 ];
-
 const SCAN_LINES = [
-  { type: "cmd", text: "itek scan --target acme-corp.io --mode full" },
-  { type: "log", text: "[00:01] resolving subdomains ......... 214 found" },
-  { type: "log", text: "[00:04] probing open ports ........... 1,882 open / 214 hosts" },
-  { type: "log", text: "[00:09] fingerprinting services ...... nginx 1.18, Apache 2.4.49, OpenSSH 8.2" },
-  { type: "log", text: "[00:14] cross-referencing CVE database" },
-  { type: "critical", text: "CVE-2021-41773 — Apache 2.4.49 path traversal, RCE confirmed" },
-  { type: "high", text: 'CVE-2020-1938 — AJP "Ghostcat" file read confirmed' },
-  { type: "log", text: "[00:22] testing 312 injection points" },
-  { type: "critical", text: "login.acme-corp.io/api/auth — SQLi (time-based) confirmed" },
-  { type: "medium", text: "shop.acme-corp.io/search — reflected XSS" },
-  { type: "log", text: "[00:31] generating proof-of-concept evidence" },
-  { type: "done", text: "4 confirmed findings — report ready" },
+  { type: "cmd", text: "itek scan --target pipeline-scope --mode full" },
+  { type: "log", text: "[00:01] mapping targeted domain scopes" },
+  { type: "log", text: "[00:03] analyzing uploaded configuration parameters" },
+  { type: "log", text: "[00:06] parsing bounded OpenAPI/Swagger route paths" },
+  { type: "log", text: "[00:11] initializing fuzzing matrices" },
+  { type: "critical", text: "[ALERT] core router endpoint parameter manipulation verified" },
+  { type: "high", text: "[ALERT] path traversal leakage detected on sub-route structures" },
+  { type: "log", text: "[00:19] writing dynamic logging traces into repository vault" },
+  { type: "done", text: "Scan execution segment finished. Structural output complete." },
 ];
 
 /* ---------------------------------------------------------------- */
@@ -133,73 +46,51 @@ const SCAN_LINES = [
 
 function Navbar({ setView, view }) {
   const [open, setOpen] = useState(false);
-  const handleNavClick = (viewName) => { 
-    setView(viewName); 
-    setOpen(false); 
-  };
+  const handleNavClick = (viewName) => { setView(viewName); setOpen(false); };
 
   return (
     <nav className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-black/70 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-        {/* Brand Identity / Workspace Router */}
         <button onClick={() => handleNavClick(localStorage.getItem("itek_user") ? "dashboard" : "landing")} className="flex items-center gap-2.5 bg-transparent border-none outline-none cursor-pointer">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-400 font-mono text-sm font-bold text-black">I</span>
           <span className="font-mono text-lg font-bold tracking-tight text-white">ITEK</span>
         </button>
 
-        {/* Navigation Core Links */}
-        <div className="items-center gap-8 text-sm text-gray-400 flex">
-          {view === "landing" ? (
-            <div className="hidden gap-8 md:flex">
+        <div className="flex items-center gap-6">
+          {view === "landing" && (
+            <div className="hidden gap-8 md:flex text-sm text-gray-400">
               {NAV_LINKS.map((link) => <a key={link.label} href={link.href} className="transition-colors hover:text-white">{link.label}</a>)}
             </div>
-          ) : view !== "dashboard" ? (
+          )}
+          
+          {view !== "landing" && view !== "dashboard" && (
             <button onClick={() => handleNavClick("landing")} className="transition-colors hover:text-white text-sm text-gray-400 bg-transparent border-none outline-none cursor-pointer">← Back to Home</button>
-          ) : (
-            <span className="text-emerald-400 font-mono text-xs">Secured Management Portal</span>
+          )}
+
+          {view === "dashboard" && <span className="text-emerald-400 font-mono text-xs">Secured Management Portal</span>}
+
+          {view !== "dashboard" && (
+            <div className="hidden items-center gap-3 md:flex">
+              <button onClick={() => handleNavClick("login")} className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors focus:outline-none bg-transparent border-none cursor-pointer ${view === 'login' ? 'text-emerald-400' : 'text-gray-300 hover:text-white'}`}>Log in</button>
+              <button onClick={() => handleNavClick("signup")} className="rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110 focus:outline-none border-none cursor-pointer">Sign up</button>
+            </div>
+          )}
+
+          {view !== "dashboard" && (
+            <button onClick={() => setOpen(!open)} className="text-gray-400 md:hidden bg-transparent border-none cursor-pointer hover:text-white focus:outline-none flex items-center">
+              {open ? <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg> : <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 17h16" /></svg>}
+            </button>
           )}
         </div>
-
-        {/* Desktop Interface Action Triggers (Visible on big screens) */}
-        {view !== "dashboard" && (
-          <div className="hidden items-center gap-3 md:flex">
-            <button onClick={() => handleNavClick("login")} className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors focus:outline-none bg-transparent border-none cursor-pointer ${view === 'login' ? 'text-emerald-400' : 'text-gray-300 hover:text-white'}`}>Log in</button>
-            <button onClick={() => handleNavClick("signup")} className="rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110 focus:outline-none border-none cursor-pointer">Sign up</button>
-          </div>
-        )}
-
-        {/* Mobile Hamburger Menu Toggle Trigger (Visible on small viewports) */}
-        {view !== "dashboard" && (
-          <button
-            onClick={() => setOpen(!open)}
-            className="text-gray-400 md:hidden bg-transparent border-none cursor-pointer hover:text-white focus:outline-none flex items-center"
-            aria-label="Toggle structural menu layout"
-          >
-            {open ? (
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            ) : (
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 17h16" /></svg>
-            )}
-          </button>
-        )}
       </div>
 
-      {/* Mobile Drawer Panel (Conditionally slides open below header line) */}
       {open && view !== "dashboard" && (
         <div className="border-t border-white/10 bg-zinc-950/95 px-6 py-5 md:hidden font-mono text-sm">
           <div className="flex flex-col gap-4">
-            {view === "landing" && NAV_LINKS.map((link) => (
-              <a key={link.label} href={link.href} onClick={() => setOpen(false)} className="text-gray-400 hover:text-white transition-colors py-1">
-                {link.label}
-              </a>
-            ))}
+            {view === "landing" && NAV_LINKS.map((link) => <a key={link.label} href={link.href} onClick={() => setOpen(false)} className="text-gray-400 hover:text-white transition-colors py-1">{link.label}</a>)}
             <div className="flex flex-col gap-3 border-t border-white/5 pt-4 mt-1">
-              <button onClick={() => handleNavClick("login")} className="w-full rounded-xl border border-white/10 bg-transparent py-2.5 font-medium text-gray-300 hover:text-white cursor-pointer">
-                Log in
-              </button>
-              <button onClick={() => handleNavClick("signup")} className="w-full rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-2.5 font-bold text-black cursor-pointer">
-                Sign up
-              </button>
+              <button onClick={() => handleNavClick("login")} className="w-full rounded-xl border border-white/10 bg-transparent py-2.5 font-medium text-gray-300 hover:text-white cursor-pointer">Log in</button>
+              <button onClick={() => handleNavClick("signup")} className="w-full rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-2.5 font-bold text-black cursor-pointer">Sign up</button>
             </div>
           </div>
         </div>
@@ -250,21 +141,14 @@ function AuthPage({ view, setView, onLoginSuccess }) {
     const payload = view === "login" ? { email, password } : { email, username, password };
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000${targetEndpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(`http://127.0.0.1:8000${targetEndpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Authentication entry blocked.");
-      
       if (view === "login") onLoginSuccess(data.username);
       else { alert("Registration verified. Proceeding to access gateway."); setView("login"); }
     } catch (err) {
       setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
@@ -304,6 +188,9 @@ function DashboardView({ username, onLogout }) {
   const [projectFilter, setProjectFilter] = useState("");
   const [selectedProject, setSelectedProject] = useState(null);
   const [uploading, setUploading] = useState(false);
+  
+  const [newDomain, setNewDomain] = useState("");
+  const [terminalLines, setTerminalLines] = useState([]);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -318,15 +205,102 @@ function DashboardView({ username, onLogout }) {
       const res = await fetch(`http://127.0.0.1:8000/${username}/${projectName}`);
       const data = await res.json();
       setSelectedProject(data);
+      setTerminalLines([]);
       setActiveTab("project-detail");
     } catch (err) {
       alert("Error isolating target configuration profile mappings.");
     }
   };
 
+  const handleToggleScan = async () => {
+    if (!selectedProject?.project_info?.name) return;
+    const isRunning = selectedProject?.engine_status === "Scanning";
+    const endpoint = isRunning ? "stop" : "";
+
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/${username}/${selectedProject.project_info.name}/scan/${endpoint}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+
+      setSelectedProject(prev => prev ? ({
+        ...prev,
+        engine_status: data.engine_status
+      }) : null);
+
+      if (data.engine_status === "Scanning") {
+        setTerminalLines([]);
+        triggerTerminalSimulation();
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const triggerTerminalSimulation = () => {
+    let currentLine = 0;
+    const interval = setInterval(() => {
+      if (currentLine < SCAN_LINES.length) {
+        setTerminalLines(prev => [...prev, SCAN_LINES[currentLine]]);
+        currentLine++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 800);
+  };
+
+  const handleAddDomain = async (e) => {
+    e.preventDefault();
+    if (!newDomain.trim() || !selectedProject?.project_info?.name) return;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/${username}/${selectedProject.project_info.name}/domains`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain_name: newDomain }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+
+      setSelectedProject(prev => prev ? ({
+        ...prev,
+        domains: [...(prev.domains || []), data.domain]
+      }) : null);
+      setNewDomain("");
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleSwaggerUpload = async (domainName, file) => {
+    if (!file || !selectedProject?.project_info?.name) return;
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/${username}/${selectedProject.project_info.name}/domains/${domainName}/swagger`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+
+      setSelectedProject(prev => prev ? ({
+        ...prev,
+        vault: [...(prev.vault || []), data.asset],
+        domains: (prev.domains || []).map(d => d.name === domainName ? data.domain : d)
+      }) : null);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleVaultUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file || !selectedProject?.project_info?.name) return;
 
     setUploading(true);
     const formData = new FormData();
@@ -340,10 +314,10 @@ function DashboardView({ username, onLogout }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Upload constraint failure");
 
-      setSelectedProject((prev) => ({
+      setSelectedProject((prev) => prev ? ({
         ...prev,
-        vault: [...prev.vault, data.asset],
-      }));
+        vault: [...(prev.vault || []), data.asset],
+      }) : null);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -353,11 +327,12 @@ function DashboardView({ username, onLogout }) {
   };
 
   const handleFileDownload = (fileId) => {
-    // Routes the browser window frame link to fire the clean attachment transmission node
+    if (!selectedProject?.project_info?.name) return;
     window.location.href = `http://127.0.0.1:8000/${username}/${selectedProject.project_info.name}/vault/download/${fileId}`;
   };
 
   const handleVaultDelete = async (fileId) => {
+    if (!selectedProject?.project_info?.name) return;
     if (!confirm("Are you certain you want to permanently purge this file asset from vault inventory?")) return;
     try {
       const res = await fetch(`http://127.0.0.1:8000/${username}/${selectedProject.project_info.name}/vault/${fileId}`, {
@@ -365,10 +340,11 @@ function DashboardView({ username, onLogout }) {
       });
       if (!res.ok) throw new Error("Purge authorization fault.");
 
-      setSelectedProject((prev) => ({
+      setSelectedProject((prev) => prev ? ({
         ...prev,
-        vault: prev.vault.filter((item) => item.id !== fileId),
-      }));
+        vault: (prev.vault || []).filter((item) => item.id !== fileId),
+        domains: (prev.domains || []).map(d => d.swagger_file_id === fileId ? { ...d, swagger_file_id: null } : d)
+      }) : null);
     } catch (err) {
       alert(err.message);
     }
@@ -377,7 +353,7 @@ function DashboardView({ username, onLogout }) {
   if (loading) return <div className="pt-32 text-center font-mono text-gray-500">Decrypting target environments...</div>;
   if (!profileData) return <div className="pt-32 text-center font-mono text-red-400">Security Clearance Violation.</div>;
 
-  const filteredProjects = profileData.projects.filter(p => p.name.toLowerCase().includes(projectFilter.toLowerCase()));
+  const filteredProjects = (profileData.projects || []).filter(p => p.name.toLowerCase().includes(projectFilter.toLowerCase()));
 
   return (
     <div className="mx-auto max-w-7xl px-6 pt-24 pb-16 font-mono text-sm text-gray-300">
@@ -392,7 +368,7 @@ function DashboardView({ username, onLogout }) {
       <div className="flex gap-6 border-b border-white/10 my-6 text-xs uppercase tracking-wider">
         {["overview", "projects", "account", "settings"].map((tab) => (
           <button key={tab} onClick={() => { setActiveTab(tab); setSelectedProject(null); }} className={`pb-3 font-bold bg-transparent border-none cursor-pointer ${activeTab === tab ? "border-b-2 border-emerald-400 text-white" : "text-gray-500 hover:text-gray-300"}`}>
-            {tab} {tab === "projects" && `(${profileData.projects.length})`}
+            {tab} {tab === "projects" && `(${filteredProjects.length})`}
           </button>
         ))}
       </div>
@@ -421,12 +397,102 @@ function DashboardView({ username, onLogout }) {
         <div className="space-y-6">
           <button onClick={() => setActiveTab("projects")} className="text-xs text-gray-500 hover:text-white cursor-pointer bg-transparent border-none">← Back to operational matrix</button>
           
-          <div className="border border-white/10 bg-zinc-950/40 rounded-xl p-6 space-y-4">
-            <h3 className="text-white text-lg font-bold">{selectedProject.project_info.name}</h3>
-            <pre className="bg-black/50 p-3 rounded border border-white/5 text-xs text-cyan-400">{JSON.stringify(selectedProject.scope_rules, null, 2)}</pre>
+          {/* Main Execution Deck */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2 border border-white/10 bg-zinc-950/40 rounded-xl p-6 space-y-4 flex flex-col justify-between">
+              <div>
+                <h3 className="text-white text-lg font-bold">{selectedProject?.project_info?.name}</h3>
+                <div className="mt-3 flex items-center gap-3">
+                  <span className="text-xs text-gray-500">Pipeline Core:</span>
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full ${selectedProject?.engine_status === 'Scanning' ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' : 'text-gray-400 bg-zinc-900 border border-white/5'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${selectedProject?.engine_status === 'Scanning' ? 'bg-emerald-400 animate-ping' : 'bg-gray-500'}`} />
+                    {selectedProject?.engine_status || "Idle"}
+                  </span>
+                </div>
+              </div>
+              <pre className="bg-black/50 p-3 rounded border border-white/5 text-xs text-cyan-400 font-mono overflow-x-auto">{JSON.stringify(selectedProject?.scope_rules || [], null, 2)}</pre>
+            </div>
+
+            {/* Prominent Circular Trigger Core */}
+            <div className="border border-white/10 bg-gradient-to-b from-zinc-900/60 to-black/40 rounded-xl p-6 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+              <div className="absolute inset-0 bg-emerald-500/[0.02] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+              <button 
+                onClick={handleToggleScan} 
+                className={`relative z-10 flex flex-col h-28 w-28 items-center justify-center rounded-full font-mono text-xs font-bold tracking-widest uppercase border-0 outline-none transition-all duration-300 cursor-pointer shadow-2xl ${selectedProject?.engine_status === 'Scanning' ? 'bg-gradient-to-br from-red-500 to-amber-500 text-white shadow-red-500/20 animate-pulse' : 'bg-gradient-to-br from-emerald-400 via-emerald-500 to-cyan-500 text-black shadow-emerald-500/30 hover:scale-105 active:scale-95 hover:shadow-cyan-400/40'}`}
+              >
+                <IconFlame className={`h-6 w-6 mb-1 ${selectedProject?.engine_status === 'Scanning' ? 'animate-bounce' : ''}`} />
+                <span>{selectedProject?.engine_status === "Scanning" ? "Halt" : "Run Scan"}</span>
+              </button>
+              <p className="text-[11px] text-gray-500 mt-4 max-w-[180px] leading-relaxed">
+                {selectedProject?.engine_status === "Scanning" ? "Pipeline operating. Press to sever connection." : "Engage offensive orchestration suite directly against active scope variables."}
+              </p>
+            </div>
           </div>
 
-          {/* Secure Isolated Vault Partition Layout */}
+          {/* Dynamic Console Deck */}
+          {terminalLines.length > 0 && (
+            <div className="border border-white/10 bg-black rounded-xl p-5 font-mono text-[11px] md:text-xs space-y-1.5 max-h-60 overflow-y-auto shadow-inner border-t-emerald-500/30">
+              <div className="flex items-center justify-between border-b border-white/5 pb-2 mb-2 text-[10px] text-gray-500 uppercase tracking-wider">
+                <span>Orchestrator Feedback Stream</span>
+                <span className="text-emerald-400 animate-pulse">● System Connected</span>
+              </div>
+              {terminalLines.map((line, idx) => (
+                <p key={idx} className={line.type === "critical" ? "text-red-400 font-bold" : line.type === "high" ? "text-amber-400 font-bold" : line.type === "done" ? "text-emerald-400 font-bold" : "text-gray-400"}>
+                  {line.type === "cmd" ? <span className="text-cyan-400">&gt;&gt; </span> : ""}
+                  {line.text}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Test Domains Matrix */}
+          <div className="border border-white/10 bg-zinc-950/40 rounded-xl p-6 space-y-6">
+            <div className="flex flex-col gap-4 border-b border-white/5 pb-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+                  <IconGlobe className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-white font-bold text-sm">Target Domains</h4>
+                  <p className="text-gray-500 text-[11px]">Map isolated targets and bind OpenAPI/Swagger schemas.</p>
+                </div>
+              </div>
+              <form onSubmit={handleAddDomain} className="flex gap-2">
+                <input type="text" placeholder="api.target.io" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} className="rounded-lg border border-white/10 bg-black px-3 py-1.5 text-xs text-white outline-none focus:border-emerald-400/40" />
+                <button type="submit" className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 transition cursor-pointer">Add</button>
+              </form>
+            </div>
+
+            {(!selectedProject?.domains || selectedProject.domains.length === 0) ? (
+              <div className="text-center py-6 border border-dashed border-white/10 rounded-xl text-gray-600 text-xs">No domains mapped in current scope.</div>
+            ) : (
+              <div className="overflow-hidden border border-white/5 bg-black/20 rounded-xl divide-y divide-white/5">
+                {selectedProject.domains.map((domain) => (
+                  <div key={domain.name} className="flex flex-col md:flex-row md:items-center justify-between p-4 hover:bg-white/[0.01] gap-4 transition">
+                    <div className="flex items-center gap-3">
+                      <span className="text-emerald-400 font-bold text-xs">{domain.name}</span>
+                    </div>
+                    <div>
+                      {domain.swagger_file_id ? (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] text-cyan-400 border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 rounded-full">
+                          <IconShieldCheck className="h-3 w-3" /> Schema Bound
+                        </span>
+                      ) : (
+                        <div>
+                          <input type="file" accept=".json" onChange={(e) => handleSwaggerUpload(domain.name, e.target.files[0])} className="hidden" id={`swagger-upload-${domain.name}`} />
+                          <label htmlFor={`swagger-upload-${domain.name}`} className={`inline-flex items-center gap-2 rounded border border-white/10 bg-white/[0.02] px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:text-white hover:border-white/30 cursor-pointer transition ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+                            <IconUploadCloud className="h-3 w-3" /> Attach Swagger (.json)
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Secure Vault */}
           <div className="border border-white/10 bg-zinc-950/40 rounded-xl p-6 space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 pb-4">
               <div className="flex items-center gap-3">
@@ -448,7 +514,7 @@ function DashboardView({ username, onLogout }) {
               </div>
             </div>
 
-            {selectedProject.vault.length === 0 ? (
+            {(!selectedProject?.vault || selectedProject.vault.length === 0) ? (
               <div className="text-center py-8 border border-dashed border-white/10 rounded-xl text-gray-600 text-xs">
                 No payloads, binary logs, or evidence mapped to this vault structure yet.
               </div>
@@ -460,9 +526,9 @@ function DashboardView({ username, onLogout }) {
                       onClick={() => handleFileDownload(item.id)}
                       className="flex items-center gap-3 overflow-hidden cursor-pointer group/file"
                     >
-                      <IconDocFile className="h-5 w-5 text-cyan-400 shrink-0 group-hover/file:text-emerald-400 transition-colors" />
+                      <IconDocFile className="h-5 w-5 text-cyan-400 shrink-0 transition-colors" />
                       <div className="overflow-hidden">
-                        <p className="text-gray-200 font-medium truncate text-xs group-hover/file:text-white group-hover/file:underline decoration-emerald-400 transition-all">
+                        <p className="text-gray-200 font-medium truncate text-xs transition-all">
                           {item.name}
                         </p>
                         <p className="text-[10px] text-gray-500 mt-0.5">{item.size} • Buffered {item.date}</p>
@@ -507,7 +573,7 @@ export default function App() {
           <TerminalDemo />
         </>
       ) : (
-        <AuthPage view={view} setView={navigateTo} onLoginSuccess={handleLoginSuccess} />
+        <AuthPage view={view} setView={setView} onLoginSuccess={handleLoginSuccess} />
       )}
       <Footer />
     </div>
