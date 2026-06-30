@@ -1,0 +1,56 @@
+
+=============================================
+STARTING HARDENED PIPELINE STREAM: admin/core-api-service
+=============================================
+BASE VERIFIED PATH TRACK: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service
+
+--> ENGAGING DOMAIN PIPELINE: api.itek.io
+Executing File Allocation: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service\recon_enumerate_api.itek.io.json
+CONFIRMED DISK SAVE: recon_enumerate_api.itek.io.json successfully committed to system.
+CONFIRMED ENGINE SYNC: recon_enumerate_api.itek.io.json added to web table view.
+
+--> ENGAGING DOMAIN PIPELINE: infoteksoftware.com
+Executing File Allocation: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service\recon_enumerate_infoteksoftware.com.json
+CONFIRMED DISK SAVE: recon_enumerate_infoteksoftware.com.json successfully committed to system.
+CONFIRMED ENGINE SYNC: recon_enumerate_infoteksoftware.com.json added to web table view.
+
+=============================================
+PIPELINE TASK STOPPED AND CLEANED UP NATIVELY
+=============================================
+
+=============================================
+STARTING HARDENED PIPELINE STREAM: admin/core-api-service
+=============================================
+BASE VERIFIED PATH TRACK: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service
+
+--> ENGAGING DOMAIN PIPELINE: api.itek.io
+Executing File Allocation: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service\recon_enumerate_api.itek.io.json
+CONFIRMED DISK SAVE: recon_enumerate_api.itek.io.json successfully committed to system.
+CONFIRMED ENGINE SYNC: recon_enumerate_api.itek.io.json added to web table view.
+
+=============================================
+PIPELINE TASK STOPPED AND CLEANED UP NATIVELY
+=============================================
+
+=============================================
+STARTING HARDENED PIPELINE STREAM: admin/core-api-service
+=============================================
+BASE VERIFIED PATH TRACK: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service
+
+--> ENGAGING DOMAIN PIPELINE: api.itek.io
+Executing File Allocation: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service\recon_enumerate_api.itek.io.json
+CONFIRMED DISK SAVE: recon_enumerate_api.itek.io.json successfully committed to system.
+
+--> ENGAGING DOMAIN PIPELINE: iteksoftware.com
+Executing File Allocation: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service\recon_enumerate_iteksoftware.com.json
+CONFIRMED DISK SAVE: recon_enumerate_iteksoftware.com.json successfully committed to system.
+CONFIRMED ENGINE SYNC: recon_enumerate_iteksoftware.com.json added to web table view.
+
+--> ENGAGING DOMAIN PIPELINE: infoteksoftware.com
+Executing File Allocation: C:\Users\itekr\ITEK_VAPT_TOOL\vault_storage\admin\core-api-service\recon_enumerate_infoteksoftware.com.json
+CONFIRMED DISK SAVE: recon_enumerate_infoteksoftware.com.json successfully committed to system.
+CONFIRMED ENGINE SYNC: recon_enumerate_infoteksoftware.com.json added to web table view.
+
+=============================================
+PIPELINE TASK STOPPED AND CLEANED UP NATIVELY
+=============================================
