@@ -1,212 +1,286 @@
-import os
-import json
-import secrets
-import traceback
-import shutil
-from pathlib import Path
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, status, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import List, Optional, Any
+from pathlib import Path
+import secrets
+import os
 
-# External parsing and recon dependencies
-from features.recon.enumerate import enumerate as run_enumerate
-from features.post_requests.post_requests import get_post_requests
+app = FastAPI(title="ITEK VAPT Tool API", version="1.0")
 
-app = FastAPI()
-
-# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Base folder layer for permanent server binary isolation
 STORAGE_DIR = Path("vault_storage")
-users_db = {} 
 
-def run_pipeline_worker(username: str, project_name: str):
-    target_user = username.strip().lower()
-    target_project = project_name.strip().lower()
-    log_path = os.path.abspath("debug_worker.log")
+# ---------------------------------------------------------------- #
+# Data Schemas 
+# ---------------------------------------------------------------- #
+
+class UserSignup(BaseModel):
+    email: str
+    username: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+# ---------------------------------------------------------------- #
+# In-Memory Database Simulation (Isolated Workspace Nodes)
+# ---------------------------------------------------------------- #
+users_db = {
+    "admin@itek.io": {
+        "username": "admin",
+        "password": "password123",
+        "company": "ITEK Offensive Security Labs",
+        "role": "Administrator",
+        "bio": "Offensive security team lead & core automated fuzzing engine maintainer.",
+        "projects": [
+            {
+                "name": "core-api-service", 
+                "visibility": "Private", 
+                "critical": 2, 
+                "high": 5, 
+                "updated": "2 hours ago",
+                "vault": [
+                    {"id": "v-7d2a", "name": "nmap_discovery_subnet.xml", "size": "42.8 KB", "date": "2 hours ago"},
+                    {"id": "v-9c1f", "name": "prod_jwt_public_key.pem", "size": "1.6 KB", "date": "Yesterday"}
+                ]
+            },
+            {
+                "name": "legacy-auth-gateway", 
+                "visibility": "Private", 
+                "critical": 7, 
+                "high": 12, 
+                "updated": "Yesterday",
+                "vault": [
+                    {"id": "v-1a4b", "name": "fuzz_wordlist_backdoor.txt", "size": "1.2 MB", "date": "2 days ago"}
+                ]
+            },
+            {
+                "name": "public-documentation", 
+                "visibility": "Public", 
+                "critical": 0, 
+                "high": 0, 
+                "updated": "3 days ago",
+                "vault": []
+            }
+        ]
+    }
+}
+
+# ---------------------------------------------------------------- #
+# Core Routing Framework
+# ---------------------------------------------------------------- #
+
+@app.get("/")
+async def get_index():
+    return {"status": "API is online"}
+
+@app.post("/signup")
+async def get_signup(credentials: UserSignup):
+    email = credentials.email.strip()
+    username = credentials.username.strip().lower()
     
-    with open(log_path, "a", encoding="utf-8") as log:
-        log.write(f"\n=============================================\n")
-        log.write(f"STARTING HARDENED ISOLATED PIPELINE: {target_user}/{target_project}\n")
-        log.write(f"=============================================\n")
-        
-        profile = next((u for u in users_db.values() if u["username"] == target_user), None)
-        if not profile:
-            log.write("CRITICAL FAILED STATUS: User profile not matching context database.\n")
-            return
-            
-        proj = next((p for p in profile["projects"] if p["name"].lower() == target_project), None)
-        if not proj:
-            log.write("CRITICAL FAILED STATUS: Project container missing from user scope mapping.\n")
-            return
-            
-        project_disk_path = Path(os.path.abspath(STORAGE_DIR / target_user / target_project))
-        
-        try:
-            project_disk_path.mkdir(parents=True, exist_ok=True)
-            log.write(f"BASE VERIFIED PATH TRACK: {project_disk_path}\n")
-        except Exception as directory_creation_fault:
-            log.write(f"FATAL SYSTEM ERROR: Cannot build folder tracking sequence: {str(directory_creation_fault)}\n")
-            log.write(traceback.format_exc())
-            proj["engine_status"] = "Idle"
-            return
+    if email in users_db:
+        raise HTTPException(status_code=400, detail="An account with this email already exists")
+    if any(u.get("username") == username for u in users_db.values()):
+        raise HTTPException(status_code=400, detail="This username is already taken")
+    
+    users_db[email] = {
+        "username": username,
+        "password": credentials.password,
+        "company": "Independent Security Team",
+        "role": "Pentester",
+        "bio": "Security analyst executing target infrastructure verification assessments.",
+        "projects": [
+            {
+                "name": "default-scan-target", 
+                "visibility": "Private", 
+                "critical": 0, 
+                "high": 0, 
+                "updated": "Just now",
+                "vault": []
+            }
+        ]
+    }
+    return {"message": "Registration successful"}
 
-        try:
-            for domain_record in proj.get("domains", []):
-                domain = domain_record["name"]
-                log.write(f"\n--> ENGAGING DOMAIN PIPELINE: {domain}\n")
-                
-                # =================================================================
-                # PHASE 1: EXECUTE RECON ENUMERATION & COMPEL PHYSICAL WRITE
-                # =================================================================
-                try:
-                    output_data = run_enumerate({"domain": domain})
-                    recon_dir_name = f"{domain}_enumeration"
-                    domain_recon_dir = Path(os.path.abspath(project_disk_path / recon_dir_name))
-                    domain_recon_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    recon_file_name = f"recon_enumerate_{domain}.json"
-                    recon_disk_path = os.path.abspath(domain_recon_dir / recon_file_name)
-                    vault_recon_display_name = f"{recon_dir_name}/{recon_file_name}"
-                    
-                    log.write(f"Executing Recon File Allocation: {recon_disk_path}\n")
-                    
-                    with open(recon_disk_path, "w", encoding="utf-8") as f:
-                        json.dump(output_data, f, indent=4)
-                        
-                    log.write(f"CONFIRMED DISK SAVE: {vault_recon_display_name} successfully committed to system.\n")
-                    
-                    if not any(v["name"] == vault_recon_display_name for v in proj["vault"]):
-                        file_size = os.path.getsize(recon_disk_path)
-                        size_str = f"{round(file_size / 1024, 1)} KB" if file_size >= 1024 else f"{file_size} Bytes"
-                        proj["vault"].append({
-                            "id": f"v-{secrets.token_hex(2)}",
-                            "name": vault_recon_display_name,
-                            "size": size_str,
-                            "date": "Just now"
-                        })
-                        log.write(f"CONFIRMED ENGINE SYNC: {vault_recon_display_name} added to web table view.\n")
-                        
-                except Exception as enum_error:
-                    log.write(f"!!! WRITE RECON ERROR ON TARGET '{domain}': {str(enum_error)}\n")
-                    log.write(traceback.format_exc())
+@app.post("/login")
+async def get_login(credentials: UserLogin):
+    user_record = users_db.get(credentials.email.strip())
+    if not user_record or user_record["password"] != credentials.password:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    return {"message": "Login successful", "username": user_record["username"]}
 
-                # =================================================================
-                # PHASE 2: RUN SWAGGER POST VECTOR PARSING & COMPEL DIRECT EXTRACTION
-                # =================================================================
-                file_id = domain_record.get("swagger_file_id")
-                if file_id:
-                    vault_asset = next((v for v in proj.get("vault", []) if v["id"] == file_id), None)
-                    if vault_asset:
-                        safe_filename = f"{file_id}_{domain}_{vault_asset['name'].split('_', 1)[-1]}" if "_" in vault_asset['name'] else f"{file_id}_{vault_asset['name']}"
-                        schema_disk_path = os.path.abspath(project_disk_path / safe_filename)
-                        if not os.path.exists(schema_disk_path):
-                            schema_disk_path = os.path.abspath(project_disk_path / f"{file_id}_{vault_asset['name']}")
-                            
-                        if os.path.exists(schema_disk_path):
-                            try:
-                                with open(schema_disk_path, "r", encoding="utf-8") as f:
-                                    schema_content = f.read()
-                                target_dir_name = f"{domain}_requests"
-                                domain_vault_dir = Path(os.path.abspath(project_disk_path / target_dir_name))
-                                domain_vault_dir.mkdir(parents=True, exist_ok=True)
-                                log.write(f"TARGET EXT EXTRACTION PATH VERIFIED: {domain_vault_dir}\n")
-                                
-                                input_payload = {"spec": schema_content, "output_dir": str(domain_vault_dir)}
-                                execution_manifest = get_post_requests(input_payload)
-                                
-                                for full_file_path in execution_manifest.get("generated_files", []):
-                                    abs_file_path = os.path.abspath(full_file_path)
-                                    filename = os.path.basename(abs_file_path)
-                                    vault_display_name = f"{target_dir_name}/{filename}"
-                                    if os.path.exists(abs_file_path):
-                                        if not any(v["name"] == vault_display_name for v in proj["vault"]):
-                                            file_size_bytes = os.path.getsize(abs_file_path)
-                                            v_size_str = f"{round(file_size_bytes / 1024, 1)} KB" if file_size_bytes >= 1024 else f"{file_size_bytes} Bytes"
-                                            proj["vault"].append({
-                                                "id": f"v-{secrets.token_hex(2)}",
-                                                "name": vault_display_name,
-                                                "size": v_size_str,
-                                                "date": "Just now"
-                                            })
-                                            log.write(f"CONFIRMED VECTOR SYNC: Generated vector stored at {vault_display_name}\n")
-                            except Exception as post_error:
-                                log.write(f"!!! WRITE VECTOR ERROR ON TARGET '{domain}': {str(post_error)}\n")
-                                log.write(traceback.format_exc())
-                                
-        except Exception as loop_fatal:
-            log.write(f"FATAL RECON ENGINE PROCESS DE-RAIL: {str(loop_fatal)}\n")
-            log.write(traceback.format_exc())
-        finally:
-            proj["engine_status"] = "Idle"
-            log.write("\n=============================================\n")
-            log.write("PIPELINE TASK STOPPED AND CLEANED UP NATIVELY\n")
-            log.write("=============================================\n")
+@app.get("/{username}")
+async def get_user(username: str):
+    target = username.strip().lower()
+    profile = next((u for u in users_db.values() if u["username"] == target), None)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User profile workspace not found")
+    
+    return {
+        "username": profile["username"],
+        "company": profile["company"],
+        "role": profile["role"],
+        "bio": profile["bio"],
+        "projects": profile["projects"]
+    }
 
-@app.post("/{username}/{project}/scan")
-async def trigger_full_scan(username: str, project: str, background_tasks: BackgroundTasks):
+@app.get("/{username}/{project}")
+async def get_project(username: str, project: str):
     target_user = username.strip().lower()
     target_project = project.strip().lower()
+    
     profile = next((u for u in users_db.values() if u["username"] == target_user), None)
-    if not profile: raise HTTPException(status_code=404, detail="User not found")
+    if not profile:
+        raise HTTPException(status_code=404, detail="Workspace operator context not found")
+        
     proj = next((p for p in profile["projects"] if p["name"].lower() == target_project), None)
-    if not proj: raise HTTPException(status_code=404, detail="Project not found")
-    proj["engine_status"] = "Scanning"
-    background_tasks.add_task(run_pipeline_worker, target_user, target_project)
-    return {"status": "success"}
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project profile mismatch under this user context")
+        
+    return {
+        "project_info": proj, 
+        "scope_rules": [f"*.{proj['name']}.itek.internal"], 
+        "engine_status": "Idle",
+        "vault": proj.get("vault", [])
+    }
 
-@app.delete("/{username}/{project}/domains/{domain_name}")
-async def delete_domain(username: str, project: str, domain_name: str):
+# ---------------------------------------------------------------- #
+# Secure Vault Storage Operations
+# ---------------------------------------------------------------- #
+
+@app.get("/{username}/{project}/vault")
+async def get_project_vault(username: str, project: str):
     target_user = username.strip().lower()
     target_project = project.strip().lower()
-    target_domain = domain_name.strip().lower()
     
     profile = next((u for u in users_db.values() if u["username"] == target_user), None)
-    if not profile: raise HTTPException(status_code=404, detail="User not found")
+    if not profile:
+        raise HTTPException(status_code=404, detail="User target not found")
     proj = next((p for p in profile["projects"] if p["name"].lower() == target_project), None)
-    if not proj: raise HTTPException(status_code=404, detail="Project not found")
-    
-    domain_record = next((d for d in proj.get("domains", []) if d["name"] == target_domain), None)
-    if not domain_record: raise HTTPException(status_code=404, detail="Domain not found")
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project context matching error")
+        
+    return {"vault": proj.get("vault", [])}
 
-    proj["domains"].remove(domain_record)
+@app.post("/{username}/{project}/vault/upload")
+async def upload_to_vault(username: str, project: str, file: UploadFile = File(...)):
+    target_user = username.strip().lower()
+    target_project = project.strip().lower()
     
-    project_disk_path = Path(os.path.abspath(STORAGE_DIR / target_user / target_project))
-    for folder in [f"{target_domain}_enumeration", f"{target_domain}_requests"]:
-        p = project_disk_path / folder
-        if p.exists() and p.is_dir():
-            shutil.rmtree(p)
+    profile = next((u for u in users_db.values() if u["username"] == target_user), None)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User container missing")
+    proj = next((p for p in profile["projects"] if p["name"].lower() == target_project), None)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Target scope missing")
     
-    proj["vault"] = [v for v in proj.get("vault", []) if not v["name"].startswith(f"{target_domain}_")]
-    return {"status": "success", "message": "Domain and associated files purged."}
+    if "vault" not in proj:
+        proj["vault"] = []
+        
+    if any(f["name"] == file.filename for f in proj["vault"]):
+        raise HTTPException(status_code=400, detail="Asset matching this filename already exists inside Vault")
+        
+    # Enforce automated multi-tenant folder track creation
+    project_disk_path = STORAGE_DIR / target_user / target_project
+    project_disk_path.mkdir(parents=True, exist_ok=True)
+    
+    content = await file.read()
+    raw_bytes = len(content)
+    if raw_bytes >= 1024 * 1024:
+        size_str = f"{round(raw_bytes / (1024 * 1024), 1)} MB"
+    else:
+        size_str = f"{round(raw_bytes / 1024, 1)} KB" if raw_bytes > 0 else "0 KB"
+        
+    file_id = f"v-{secrets.token_hex(2)}"
+    
+    # Prefix identifier to prevent server-side path traversal and name conflicts
+    safe_filename = f"{file_id}_{file.filename}"
+    target_filepath = project_disk_path / safe_filename
+    
+    try:
+        with open(target_filepath, "wb") as storage_buffer:
+            storage_buffer.write(content)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Server block write exception during file buffer synchronization")
+        
+    new_asset = {
+        "id": file_id,
+        "name": file.filename,
+        "size": size_str,
+        "date": "Just now"
+    }
+    
+    proj["vault"].append(new_asset)
+    return {"message": "Payload securely isolated and buffered in project vault", "asset": new_asset}
 
 @app.get("/{username}/{project}/vault/download/{file_id}")
-async def download_vault_file(username: str, project: str, file_id: str):
+async def download_from_vault(username: str, project: str, file_id: str):
     target_user = username.strip().lower()
     target_project = project.strip().lower()
-    profile = next((u for u in users_db.values() if u["username"] == target_user), None)
-    if not profile: raise HTTPException(status_code=404, detail="User not found")
-    proj = next((p for p in profile["projects"] if p["name"].lower() == target_project), None)
-    if not proj: raise HTTPException(status_code=404, detail="Project not found")
-        
-    vault_asset = next((v for v in proj.get("vault", []) if v["id"] == file_id), None)
-    if not vault_asset: raise HTTPException(status_code=404, detail="File record not found")
-        
-    project_disk_path = Path(os.path.abspath(STORAGE_DIR / target_user / target_project))
-    file_disk_path = project_disk_path / vault_asset["name"]
     
-    if not file_disk_path.exists():
-        safe_filename = f"{file_id}_{vault_asset['name']}"
-        fallback_path = project_disk_path / safe_filename
-        if fallback_path.exists():
-            file_disk_path = fallback_path
-        else:
-            raise HTTPException(status_code=404, detail="Physical file missing.")
-            
-    return FileResponse(path=str(file_disk_path), filename=os.path.basename(str(file_disk_path)), media_type="application/octet-stream")
+    profile = next((u for u in users_db.values() if u["username"] == target_user), None)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User target space error")
+    proj = next((p for p in profile["projects"] if p["name"].lower() == target_project), None)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project context error")
+        
+    file_record = next((f for f in proj.get("vault", []) if f["id"] == file_id), None)
+    if not file_record:
+        raise HTTPException(status_code=404, detail="Target file record identifier not located in scope")
+        
+    safe_filename = f"{file_id}_{file_record['name']}"
+    target_filepath = STORAGE_DIR / target_user / target_project / safe_filename
+    
+    if not target_filepath.exists():
+        raise HTTPException(status_code=404, detail="Physical binary file missing from server disk storage")
+        
+    # FileResponse returns original name, concealing internal trackers from browser downloads
+    return FileResponse(
+        path=target_filepath, 
+        filename=file_record['name'], 
+        media_type="application/octet-stream"
+    )
+
+@app.delete("/{username}/{project}/vault/{file_id}")
+async def delete_from_vault(username: str, project: str, file_id: str):
+    target_user = username.strip().lower()
+    target_project = project.strip().lower()
+    
+    profile = next((u for u in users_db.values() if u["username"] == target_user), None)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User target space error")
+    proj = next((p for p in profile["projects"] if p["name"].lower() == target_project), None)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project context error")
+        
+    file_record = next((f for f in proj.get("vault", []) if f["id"] == file_id), None)
+    if not file_record:
+        raise HTTPException(status_code=404, detail="Target file record identifier not located in scope")
+        
+    safe_filename = f"{file_id}_{file_record['name']}"
+    target_filepath = STORAGE_DIR / target_user / target_project / safe_filename
+    
+    if target_filepath.exists():
+        os.remove(target_filepath)
+        
+    proj["vault"] = [f for f in proj.get("vault", []) if f["id"] != file_id]
+    return {"message": "Asset safely purged from vault inventory mapping and disk tracking nodes"}
+
+@app.get("/{username}/{project}/reports")
+async def get_project_reports(username: str, project: str): pass
+
+@app.get("/{username}/{project}/{scan}")
+async def get_scan_settings(username: str, project: str, scan: str): pass
