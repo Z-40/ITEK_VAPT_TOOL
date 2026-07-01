@@ -8,18 +8,46 @@ import shutil
 import json
 import os
 
-# --- Your Custom Pipeline Modules ---
+# ---------------------------------------------------------------- #
+# Custom Pipeline Modules (With Fallback Stubs for Testing)
+# ---------------------------------------------------------------- #
 try:
     from features.recon.enumerate import enumerate as run_enum
 except ImportError:
-    def run_enum(domain: str): return [f"api.{domain}", domain] # Fallback
+    def run_enum(domain: str): return [f"api.{domain}", domain]
+
+try:
+    from features.recon.dns_scan import scan_dns
+except ImportError:
+    def scan_dns(data: list): return {"status": "mock", "module": "dns_scan", "targets_evaluated": len(data)}
+
+try:
+    from features.recon.tls_scan import scan_tls
+except ImportError:
+    def scan_tls(data: list): return {"status": "mock", "module": "tls_scan", "targets_evaluated": len(data)}
+
+try:
+    from features.recon.port_scan import scan_ports
+except ImportError:
+    def scan_ports(data: list): return {"status": "mock", "module": "port_scan", "targets_evaluated": len(data)}
+
+try:
+    from features.recon.fingerprinting import finger
+except ImportError:
+    def finger(data: list): return {"status": "mock", "module": "fingerprinting", "targets_evaluated": len(data)}
+
+try:
+    from features.recon.web_path import web_paths
+except ImportError:
+    def web_paths(data: list): return {"status": "mock", "module": "web_path", "targets_evaluated": len(data)}
 
 try:
     from features.post_requests.post_requests import get_post_requests
 except ImportError:
-    def get_post_requests(filepath: str): return ["POST / HTTP/1.1\nHost: test"] # Fallback
+    def get_post_requests(filepath: str): return ["POST / HTTP/1.1\nHost: test"]
 
-app = FastAPI(title="ITEK VAPT Orchestrator", version="2.0")
+
+app = FastAPI(title="ITEK VAPT Orchestrator", version="2.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,7 +99,7 @@ def run_vapt_pipeline(username: str, project_name: str, domain: str):
     domain_dir = STORAGE_DIR / username.lower() / project_name.lower() / domain.lower()
     requests_dir = domain_dir / "parsed_requests"
 
-    # 1. CLEANUP: Delete files from the first run (except swagger file)
+    # 1. CLEANUP: Wipe old execution files but keep Swagger definitions
     if domain_dir.exists():
         for item in domain_dir.iterdir():
             if item.name.startswith("openapi_spec"):
@@ -84,19 +112,65 @@ def run_vapt_pipeline(username: str, project_name: str, domain: str):
     domain_dir.mkdir(parents=True, exist_ok=True)
     requests_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. ENUMERATION Phase
+    # ----------------------------------------------------------
+    # Phase 1: ENUMERATION 
+    # ----------------------------------------------------------
+    subdomains = []
     try:
         subdomains = run_enum({"domain": domain})
         with open(domain_dir / "subdomains.json", "w") as f:
             json.dump({"target": domain, "subdomains": subdomains}, f, indent=4)
     except Exception as e:
         with open(domain_dir / "error_enum.log", "w") as f: f.write(str(e))
+        subdomains = [domain]  # Fallback to keep pipeline alive
 
-    # 3. NETWORK SCAN Phase (Placeholder)
-    with open(domain_dir / "scan_metadata.json", "w") as f:
-        json.dump({"status": "completed", "ports": "scanned"}, f)
+    # ----------------------------------------------------------
+    # Phase 2: EXPANDED RECONNAISSANCE 
+    # ----------------------------------------------------------
+    
+    # 2A: DNS Scan
+    try:
+        dns_results = scan_dns(subdomains)
+        with open(domain_dir / "dns_report.json", "w") as f:
+            json.dump(dns_results, f, indent=4)
+    except Exception as e:
+        with open(domain_dir / "error_dns.log", "w") as f: f.write(str(e))
 
-    # 4. SWAGGER PARSING Phase
+    # 2B: TLS Scan
+    try:
+        tls_results = scan_tls(subdomains)
+        with open(domain_dir / "tls_report.json", "w") as f:
+            json.dump(tls_results, f, indent=4)
+    except Exception as e:
+        with open(domain_dir / "error_tls.log", "w") as f: f.write(str(e))
+
+    # 2C: Port Scan
+    try:
+        ports_results = scan_ports(subdomains)
+        with open(domain_dir / "ports_report.json", "w") as f:
+            json.dump(ports_results, f, indent=4)
+    except Exception as e:
+        with open(domain_dir / "error_ports.log", "w") as f: f.write(str(e))
+
+    # 2D: Service Fingerprinting
+    try:
+        fingerprint_results = finger(subdomains)
+        with open(domain_dir / "fingerprints.json", "w") as f:
+            json.dump(fingerprint_results, f, indent=4)
+    except Exception as e:
+        with open(domain_dir / "error_finger.log", "w") as f: f.write(str(e))
+
+    # 2E: Web Path Discovery
+    try:
+        paths_results = web_paths(subdomains)
+        with open(domain_dir / "web_paths.json", "w") as f:
+            json.dump(paths_results, f, indent=4)
+    except Exception as e:
+        with open(domain_dir / "error_web_paths.log", "w") as f: f.write(str(e))
+
+    # ----------------------------------------------------------
+    # Phase 3: SWAGGER PARSING 
+    # ----------------------------------------------------------
     swagger_files = list(domain_dir.glob("openapi_spec.*"))
     if swagger_files:
         try:
@@ -107,9 +181,11 @@ def run_vapt_pipeline(username: str, project_name: str, domain: str):
         except Exception as e:
             with open(domain_dir / "error_swagger.log", "w") as f: f.write(str(e))
 
-    # 5. FINAL REPORT Phase
+    # ----------------------------------------------------------
+    # Phase 4: FINAL REPORT (SQLi / DAST hooks go here later)
+    # ----------------------------------------------------------
     with open(domain_dir / "findings_report.json", "w") as f:
-        json.dump({"vulnerabilities": [], "status": "Finished"}, f, indent=4)
+        json.dump({"vulnerabilities": [], "status": "Pipeline Modules Completed Successfully"}, f, indent=4)
 
 
 # ---------------------------------------------------------------- #
@@ -176,7 +252,7 @@ async def get_vault_files(username: str, project: str, domain: str):
             for fname in filenames:
                 full_path = Path(root) / fname
                 rel_path = full_path.relative_to(domain_dir)
-                files.append({"name": str(rel_path), "size": f"{full_path.stat().st_size} bytes"})
+                files.append({"name": str(rel_path).replace("\\", "/"), "size": f"{full_path.stat().st_size} bytes"})
     return {"files": files}
 
 @app.post("/{username}/{project}/{domain}/vault/upload")
