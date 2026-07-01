@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, status, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -7,6 +10,8 @@ from pathlib import Path
 import shutil
 import json
 import os
+
+import db
 
 # ---------------------------------------------------------------- #
 # Custom Pipeline Modules (With Fallback Stubs for Testing)
@@ -47,11 +52,11 @@ except ImportError:
     def get_post_requests(filepath: str): return ["POST / HTTP/1.1\nHost: test"]
 
 
-app = FastAPI(title="ITEK VAPT Orchestrator", version="2.1")
+app = FastAPI(title="ITEK VAPT Orchestrator", version="2.2")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,40 +65,14 @@ app.add_middleware(
 STORAGE_DIR = Path("vault_storage")
 
 # ---------------------------------------------------------------- #
-# Data Schemas 
+# Data Schemas
 # ---------------------------------------------------------------- #
 class UserSignup(BaseModel): email: str; username: str; password: str
 class UserLogin(BaseModel): email: str; password: str
 class DomainAdd(BaseModel): domain: str
 
 # ---------------------------------------------------------------- #
-# In-Memory Database Simulation
-# ---------------------------------------------------------------- #
-users_db = {
-    "admin@itek.io": {
-        "username": "admin",
-        "password": "password123",
-        "company": "ITEK Offensive Security Labs",
-        "role": "Administrator",
-        "bio": "Offensive security team lead.",
-        "projects": [
-            {
-                "name": "core-api-service", 
-                "visibility": "Private", 
-                "domains": [
-                    {"name": "example.com"}
-                ]
-            }
-        ]
-    }
-}
-
-def find_profile_by_username(username: str):
-    target = username.strip().lower()
-    return next((u for u in users_db.values() if u["username"].lower() == target), None)
-
-# ---------------------------------------------------------------- #
-# Pipeline Execution Engine
+# Pipeline Execution Engine (unchanged — still file-based, not DB-backed)
 # ---------------------------------------------------------------- #
 def run_vapt_pipeline(username: str, project_name: str, domain: str):
     domain_dir = STORAGE_DIR / username.lower() / project_name.lower() / domain.lower()
@@ -108,12 +87,12 @@ def run_vapt_pipeline(username: str, project_name: str, domain: str):
                 item.unlink()
             elif item.is_dir():
                 shutil.rmtree(item)
-    
+
     domain_dir.mkdir(parents=True, exist_ok=True)
     requests_dir.mkdir(parents=True, exist_ok=True)
 
     # ----------------------------------------------------------
-    # Phase 1: ENUMERATION 
+    # Phase 1: ENUMERATION
     # ----------------------------------------------------------
     subdomains = []
     try:
@@ -125,9 +104,9 @@ def run_vapt_pipeline(username: str, project_name: str, domain: str):
         subdomains = [domain]  # Fallback to keep pipeline alive
 
     # ----------------------------------------------------------
-    # Phase 2: EXPANDED RECONNAISSANCE 
+    # Phase 2: EXPANDED RECONNAISSANCE
     # ----------------------------------------------------------
-    
+
     # 2A: DNS Scan
     try:
         dns_results = scan_dns(subdomains)
@@ -169,7 +148,7 @@ def run_vapt_pipeline(username: str, project_name: str, domain: str):
         with open(domain_dir / "error_web_paths.log", "w") as f: f.write(str(e))
 
     # ----------------------------------------------------------
-    # Phase 3: SWAGGER PARSING 
+    # Phase 3: SWAGGER PARSING
     # ----------------------------------------------------------
     swagger_files = list(domain_dir.glob("openapi_spec.*"))
     if swagger_files:
@@ -194,54 +173,63 @@ def run_vapt_pipeline(username: str, project_name: str, domain: str):
 @app.post("/signup")
 async def get_signup(credentials: UserSignup):
     email, username = credentials.email.strip(), credentials.username.strip().lower()
-    if email in users_db or find_profile_by_username(username):
-        raise HTTPException(status_code=400, detail="Account exists")
-    users_db[email] = {
-        "username": username, "password": credentials.password,
-        "company": "Operator", "role": "Pentester", "bio": "",
-        "projects": [{"name": "default-workspace", "visibility": "Private", "domains": []}]
-    }
+    try:
+        db.create_user(email, username, credentials.password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"message": "Success"}
+
 
 @app.post("/login")
 async def get_login(credentials: UserLogin):
-    user_record = users_db.get(credentials.email.strip())
-    if not user_record or user_record["password"] != credentials.password:
+    user = db.authenticate_user(credentials.email.strip(), credentials.password)
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"message": "Success", "username": user_record["username"]}
+    return {"message": "Success", "username": user["username"]}
+
 
 @app.get("/{username}")
 async def get_user(username: str):
-    profile = find_profile_by_username(username)
-    if not profile: raise HTTPException(status_code=404)
-    return {"username": profile["username"], "projects": profile["projects"]}
+    profile = db.get_profile_by_username(username)
+    if not profile:
+        raise HTTPException(status_code=404)
+    return profile
 
 # ---------------------------------------------------------------- #
 # Domain & Vault Routes
 # ---------------------------------------------------------------- #
 @app.post("/{username}/{project}/domains/add")
 async def add_domain(username: str, project: str, payload: DomainAdd):
-    profile = find_profile_by_username(username)
-    proj = next((p for p in profile["projects"] if p["name"] == project), None)
     domain_name = payload.domain.lower()
-    if not any(d["name"] == domain_name for d in proj["domains"]):
-        proj["domains"].append({"name": domain_name})
+    try:
+        db.add_domain(username, project, domain_name)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Project not found")
+
     (STORAGE_DIR / username.lower() / project.lower() / domain_name).mkdir(parents=True, exist_ok=True)
     return {"message": "Domain added"}
 
+
 @app.delete("/{username}/{project}/domains/{domain}/remove")
 async def remove_domain(username: str, project: str, domain: str):
-    profile = find_profile_by_username(username)
-    proj = next((p for p in profile["projects"] if p["name"] == project), None)
-    proj["domains"] = [d for d in proj["domains"] if d["name"] != domain]
+    try:
+        db.remove_domain(username, project, domain)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Project not found")
+
     domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
-    if domain_dir.exists(): shutil.rmtree(domain_dir)
+    if domain_dir.exists():
+        shutil.rmtree(domain_dir)
     return {"message": "Domain removed"}
+
 
 @app.post("/{username}/{project}/{domain}/pipeline/start")
 async def start_pipeline(username: str, project: str, domain: str, bg: BackgroundTasks):
+    if not db.domain_exists(username, project, domain):
+        raise HTTPException(status_code=404, detail="Domain not found")
     bg.add_task(run_vapt_pipeline, username, project, domain)
     return {"message": "Pipeline initiated"}
+
 
 @app.get("/{username}/{project}/{domain}/vault")
 async def get_vault_files(username: str, project: str, domain: str):
@@ -255,6 +243,7 @@ async def get_vault_files(username: str, project: str, domain: str):
                 files.append({"name": str(rel_path).replace("\\", "/"), "size": f"{full_path.stat().st_size} bytes"})
     return {"files": files}
 
+
 @app.post("/{username}/{project}/{domain}/vault/upload")
 async def upload_file(username: str, project: str, domain: str, file: UploadFile = File(...)):
     domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
@@ -263,12 +252,14 @@ async def upload_file(username: str, project: str, domain: str, file: UploadFile
         shutil.copyfileobj(file.file, f)
     return {"message": "Uploaded"}
 
+
 @app.get("/{username}/{project}/{domain}/vault/view/{filepath:path}")
 async def view_file(username: str, project: str, domain: str, filepath: str):
     target = STORAGE_DIR / username.lower() / project.lower() / domain.lower() / filepath
     if not target.exists() or not target.is_file(): raise HTTPException(status_code=404)
     with open(target, "r", errors="ignore") as f:
         return {"content": f.read()}
+
 
 @app.delete("/{username}/{project}/{domain}/vault/delete/{filepath:path}")
 async def delete_file(username: str, project: str, domain: str, filepath: str):
