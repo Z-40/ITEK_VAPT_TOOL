@@ -173,6 +173,7 @@ def enumerate(input_data: Dict) -> Dict:
         raise ValueError("Input dictionary must contain a 'domain' key.")
 
     # Extract optional parameters with the original script's defaults
+    # Add functionality to modify these from frontend
     subprocess_timeout = input_data.get("subprocess_timeout", 660)
     amass_timeout_min  = input_data.get("amass_timeout", 10)
     subfinder_threads  = input_data.get("subfinder_threads", 50)

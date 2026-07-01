@@ -176,19 +176,54 @@ function DashboardView({ username, onLogout }) {
 function DomainCard({ domain, project, username, refreshProjects }) {
   const [files, setFiles] = useState([]);
   const [viewFile, setViewFile] = useState(null);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
   const fileInputRef = useRef();
+  const pollRef = useRef(null);
 
   const loadVault = () => {
-    fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault`)
+    return fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault`)
       .then(res => res.json())
-      .then(data => setFiles(data.files || []));
+      .then(data => {
+        const fetchedFiles = data.files || [];
+        setFiles(fetchedFiles);
+        return fetchedFiles;
+      });
   };
 
   useEffect(() => { loadVault(); }, []);
 
+  // Clean up any in-flight polling if the card unmounts (e.g. domain removed)
+  useEffect(() => () => stopPolling(), []);
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setPipelineRunning(false);
+  };
+
+  const startPolling = () => {
+    if (pollRef.current) return; // already polling
+    setPipelineRunning(true);
+    const startedAt = Date.now();
+    const MAX_POLL_MS = 5 * 60 * 1000; // safety timeout: stop after 5 minutes regardless
+
+    pollRef.current = setInterval(async () => {
+      const fetchedFiles = await loadVault();
+
+      const finished = fetchedFiles.some(f => f.name === "findings_report.json");
+      const timedOut = Date.now() - startedAt > MAX_POLL_MS;
+
+      if (finished || timedOut) {
+        stopPolling();
+      }
+    }, 3000);
+  };
+
   const handleRun = async () => {
     await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/pipeline/start`, { method: "POST" });
-    alert(`Pipeline initialized for ${domain}. Artifacts will generate in the vault.`);
+    startPolling();
   };
 
   const handleDeleteDomain = async () => {
@@ -222,14 +257,24 @@ function DomainCard({ domain, project, username, refreshProjects }) {
       <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-3">
         <h3 className="font-mono text-cyan-400 text-lg">{domain}</h3>
         <div className="flex gap-3">
-          <button onClick={handleRun} className="bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 px-3 py-1 rounded text-xs font-bold cursor-pointer transition">Run Pipeline</button>
+          <button onClick={handleRun} disabled={pipelineRunning} className={`px-3 py-1 rounded text-xs font-bold transition border ${pipelineRunning ? "bg-yellow-500/10 border-yellow-500/50 text-yellow-400 cursor-wait" : "bg-emerald-500/10 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"}`}>
+            {pipelineRunning ? "Running…" : "Run Pipeline"}
+          </button>
           <button onClick={handleDeleteDomain} className="text-red-500 hover:text-red-400 text-xs px-2 cursor-pointer bg-transparent border-none">Remove Domain</button>
         </div>
       </div>
       
       <div className="text-sm">
         <div className="flex justify-between items-center mb-3">
-          <p className="uppercase tracking-wider text-xs text-gray-500 font-bold">Vault Artifacts</p>
+          <div className="flex items-center gap-2">
+            <p className="uppercase tracking-wider text-xs text-gray-500 font-bold">Vault Artifacts</p>
+            {pipelineRunning && (
+              <span className="flex items-center gap-1.5 text-[10px] text-yellow-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                scanning…
+              </span>
+            )}
+          </div>
           <div>
             <input type="file" ref={fileInputRef} onChange={handleUpload} className="hidden" />
             <button onClick={() => fileInputRef.current.click()} className="text-xs text-blue-400 border border-blue-400/30 px-2 py-1 rounded hover:bg-blue-400/10 cursor-pointer bg-transparent">+ Upload Spec (openapi_spec.json)</button>
