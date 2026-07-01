@@ -48,6 +48,7 @@ STORAGE_DIR.mkdir(exist_ok=True)
 class UserSignup(BaseModel): email: str; username: str; password: str
 class UserLogin(BaseModel): email: str; password: str
 class DomainAdd(BaseModel): domain: str
+class ProjectAdd(BaseModel): name: str
 
 # ---------------------------------------------------------------- #
 # BACKGROUND TASK (Filesystem Lock Engine)
@@ -67,7 +68,8 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
 
     try:
         domain_dir.mkdir(parents=True, exist_ok=True)
-        with open(lock_file, "w") as lf: lf.write("running")
+        # Lock is already claimed synchronously by the /pipeline/start endpoint before
+        # this background task was even scheduled — nothing to do here for that.
 
         # Clear historical run results so this run fully replaces the last one
         # (keep the lock and spec uploads)
@@ -79,7 +81,7 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
         module_status = {}
 
         # --- Enumeration is the seed step; everything else consumes its output ---
-        enum_result = run_enum({"domain": domain})
+        enum_result = {"target": domain, "subdomains": run_enum(domain)}
         module_status["enumerate"] = "success" if _safe_write_json(domain_dir / "subdomains.json", enum_result) else "empty"
 
         # --- Downstream recon modules, each fed the enumeration data ---
@@ -156,11 +158,10 @@ async def get_user_profile(username: str):
 # FILESYSTEM RESOURCE MANAGEMENT
 # ---------------------------------------------------------------- #
 @app.post("/{username}/projects/add")
-async def add_project(username: str, payload: BaseModel):
+async def add_project(username: str, payload: ProjectAdd):
     # Added dynamic project root creation
-    data = payload.dict()
-    project_name = data.get("name", "").strip().lower()
-    if not project_name: raise HTTPException(status_code=400)
+    project_name = payload.name.strip().lower()
+    if not project_name: raise HTTPException(status_code=400, detail="Project name required")
     (STORAGE_DIR / username.lower() / project_name).mkdir(parents=True, exist_ok=True)
     return {"message": "Project space allocated"}
 
@@ -194,8 +195,15 @@ async def remove_domain(username: str, project: str, domain: str, force: bool = 
 async def start_pipeline(username: str, project: str, domain: str, bg: BackgroundTasks):
     domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
     if not domain_dir.exists(): raise HTTPException(status_code=404, detail="Workspace not found.")
-    if (domain_dir / ".lock-pipeline").exists(): raise HTTPException(status_code=400, detail="Running.")
-        
+
+    lock_file = domain_dir / ".lock-pipeline"
+    if lock_file.exists(): raise HTTPException(status_code=409, detail="Pipeline already running.")
+
+    # Claim the lock right here, synchronously, before returning. Doing this inside the
+    # background task instead would leave a window where two rapid requests both see
+    # "no lock" and both get scheduled — this closes that race.
+    lock_file.write_text("running")
+
     bg.add_task(run_vapt_pipeline_worker, username, project, domain)
     return {"message": "Pipeline processing"}
 

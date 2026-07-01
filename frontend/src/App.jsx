@@ -273,7 +273,29 @@ function DomainCard({ domain, project, username, refreshProjects }) {
       });
   };
 
-  useEffect(() => { loadVault(); }, []);
+  const checkStatus = async () => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/pipeline/status`);
+      if (!res.ok) return false;
+      const data = await res.json();
+      return !!data.running;
+    } catch {
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    loadVault();
+    // On mount (including after a page refresh) ask the backend for ground truth —
+    // if a pipeline is already running for this domain, resume showing it as running
+    // and start polling, instead of defaulting to "idle" just because local state reset.
+    (async () => {
+      const running = await checkStatus();
+      if (!cancelled && running) startPolling();
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Clean up any in-flight polling if the card unmounts (e.g. domain removed)
   useEffect(() => () => stopPolling(), []);
@@ -289,24 +311,34 @@ function DomainCard({ domain, project, username, refreshProjects }) {
   const startPolling = () => {
     if (pollRef.current) return; // already polling
     setPipelineRunning(true);
-    const startedAt = Date.now();
-    const MAX_POLL_MS = 5 * 60 * 1000; // safety timeout: stop after 5 minutes regardless
 
     pollRef.current = setInterval(async () => {
-      const fetchedFiles = await loadVault();
-
-      const finished = fetchedFiles.some(f => f.name === "findings_report.json");
-      const timedOut = Date.now() - startedAt > MAX_POLL_MS;
-
-      if (finished || timedOut) {
+      const running = await checkStatus();
+      if (!running) {
         stopPolling();
+        loadVault(); // pull the fresh results now that the run has finished
       }
     }, 3000);
   };
 
   const handleRun = async () => {
-    await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/pipeline/start`, { method: "POST" });
-    startPolling();
+    if (pipelineRunning) return; // guard against a rapid double-click race
+    setPipelineRunning(true); // lock the button immediately, before the request even resolves
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/pipeline/start`, { method: "POST" });
+      if (!res.ok && res.status !== 409) {
+        // 409 just means "already running" — that's fine, we resync to it below.
+        // Anything else (404 workspace missing, etc.) is a real failure.
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || "Failed to start pipeline");
+      }
+    } catch {
+      alert("Failed to reach the orchestrator API.");
+    }
+    // Whatever happened, ask the backend what's actually true rather than assuming.
+    const running = await checkStatus();
+    if (running) startPolling();
+    else setPipelineRunning(false);
   };
 
   const handleDeleteDomain = async () => {
