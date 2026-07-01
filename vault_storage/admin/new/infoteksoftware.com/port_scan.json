@@ -1,0 +1,47 @@
+{
+    "source_manifest": "infoteksoftware.com",
+    "timestamp": "2026-07-01T18:11:32.656718",
+    "total_targets_processed": 3,
+    "hosts": [
+        {
+            "ip": "35.154.219.99",
+            "scan_timestamp": "2026-07-01T18:11:27.064392",
+            "total_open_ports": 0,
+            "open_ports": [],
+            "subdomain_alias": "qa.infoteksoftware.com"
+        },
+        {
+            "ip": "4.247.160.15",
+            "scan_timestamp": "2026-07-01T18:11:31.138397",
+            "total_open_ports": 3,
+            "open_ports": [
+                {
+                    "port": 80,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 404 Not Found Content-Type: text/html; charset=us-ascii Server: Microsoft-HTTPAPI/2.0 Date: Wed, 01 Jul 2026..."
+                },
+                {
+                    "port": 443,
+                    "status": "open",
+                    "protocol": "HTTPS",
+                    "banner": "No banner response captured"
+                },
+                {
+                    "port": 3389,
+                    "status": "open",
+                    "protocol": "RDP",
+                    "banner": "No banner response captured"
+                }
+            ],
+            "subdomain_alias": "retail.infoteksoftware.com"
+        },
+        {
+            "ip": "20.204.96.158",
+            "scan_timestamp": "2026-07-01T18:11:32.656538",
+            "total_open_ports": 0,
+            "open_ports": [],
+            "subdomain_alias": "retailuat.infoteksoftware.com"
+        }
+    ]
+}

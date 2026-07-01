@@ -175,7 +175,7 @@ def enumerate(input_data: Dict) -> Dict:
     # Extract optional parameters with the original script's defaults
     # Add functionality to modify these from frontend
     subprocess_timeout = input_data.get("subprocess_timeout", 660)
-    amass_timeout_min  = input_data.get("amass_timeout", 10)
+    amass_timeout_min  = input_data.get("amass_timeout", 1)
     subfinder_threads  = input_data.get("subfinder_threads", 50)
     crtsh_timeout      = input_data.get("crtsh_timeout", 30)
     dns_concurrency    = input_data.get("dns_concurrency", 500)

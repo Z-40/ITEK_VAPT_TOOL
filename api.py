@@ -17,11 +17,23 @@ except ImportError:
 
 try: from features.recon.dns_scan import scan_dns
 except ImportError: 
-    def scan_dns(data: list): return {"status": "mock", "module": "dns"}
+    def scan_dns(data: dict): return {"status": "mock", "module": "dns"}
+
+try: from features.recon.tls_scan import scan_tls
+except ImportError:
+    def scan_tls(data: dict): return {"status": "mock", "module": "tls"}
+
+try: from features.recon.fingerprinting import finger
+except ImportError:
+    def finger(data: dict): return {"status": "mock", "module": "fingerprint"}
 
 try: from features.recon.port_scan import scan_ports
 except ImportError: 
-    def scan_ports(data: list): return {"status": "mock", "module": "ports"}
+    def scan_ports(data: dict): return {"status": "mock", "module": "ports"}
+
+try: from features.recon.web_path import web_paths
+except ImportError:
+    def web_paths(data: dict): return {"status": "mock", "module": "web_paths"}
 
 
 app = FastAPI(title="ITEK VAPT Orchestrator (Pure Filesystem Mode)", version="4.0")
@@ -40,26 +52,60 @@ class DomainAdd(BaseModel): domain: str
 # ---------------------------------------------------------------- #
 # BACKGROUND TASK (Filesystem Lock Engine)
 # ---------------------------------------------------------------- #
+def _safe_write_json(path: Path, data) -> bool:
+    """Writes JSON only when there's meaningful content. Never leaves an empty file
+    behind (no file at all is written if data is None/empty dict/list/string)."""
+    if data is None: return False
+    if isinstance(data, (dict, list, str)) and len(data) == 0: return False
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
+    return True
+
 def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
     domain_dir = STORAGE_DIR / username.lower() / project_name.lower() / domain.lower()
     lock_file = domain_dir / ".lock-pipeline"
-    
+
     try:
         domain_dir.mkdir(parents=True, exist_ok=True)
         with open(lock_file, "w") as lf: lf.write("running")
 
-        # Clear historical run results (keep the lock and spec uploads)
+        # Clear historical run results so this run fully replaces the last one
+        # (keep the lock and spec uploads)
         for item in domain_dir.iterdir():
             if item.name in [".lock-pipeline", "openapi_spec.json"]: continue
             if item.is_file(): item.unlink()
             elif item.is_dir(): shutil.rmtree(item, ignore_errors=True)
 
-        # Simulation: Modules executing and dropping files
-        with open(domain_dir / "subdomains.json", "w") as f:
-            json.dump({"target": domain, "subdomains": run_enum(domain)}, f)
-            
-        with open(domain_dir / "findings_report.json", "w") as f:
-            json.dump({"vulnerabilities": [], "status": "Filesystem Engine Success"}, f, indent=4)
+        module_status = {}
+
+        # --- Enumeration is the seed step; everything else consumes its output ---
+        enum_result = run_enum({"domain": domain})
+        module_status["enumerate"] = "success" if _safe_write_json(domain_dir / "subdomains.json", enum_result) else "empty"
+
+        # --- Downstream recon modules, each fed the enumeration data ---
+        pipeline_steps = [
+            ("dns_scan.json",     "dns_scan",      scan_dns),
+            ("tls_scan.json",     "tls_scan",      scan_tls),
+            ("fingerprint.json",  "fingerprinting", finger),
+            ("port_scan.json",    "port_scan",     scan_ports),
+            ("web_paths.json",    "web_path",      web_paths),
+        ]
+
+        for filename, step_name, module_fn in pipeline_steps:
+            try:
+                result = module_fn(enum_result)
+                wrote = _safe_write_json(domain_dir / filename, result)
+                module_status[step_name] = "success" if wrote else "empty"
+            except Exception as step_error:
+                # One module failing shouldn't take down the rest of the pipeline
+                module_status[step_name] = f"failed: {step_error}"
+
+        has_failures = any(str(v).startswith("failed") for v in module_status.values())
+        _safe_write_json(domain_dir / "findings_report.json", {
+            "target": domain,
+            "modules": module_status,
+            "status": "Completed with errors" if has_failures else "Filesystem Engine Success",
+        })
 
     except Exception as e:
         with open(domain_dir / "execution_error.log", "w") as f: f.write(str(e))
