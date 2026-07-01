@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 from pathlib import Path
+import threading
 import shutil
 import json
 import os
@@ -64,9 +65,22 @@ app.add_middleware(
 
 STORAGE_DIR = Path("vault_storage")
 
+
+# Thread-safe tracker to protect against deleting projects while scans run
+ACTIVE_SCANS = set()
+scan_lock = threading.Lock()
+
+def is_safe_path(base_dir: Path, target_path: Path) -> bool:
+    """Helper to enforce strict directory containment and block path traversal."""
+    try:
+        return base_dir.resolve() in target_path.resolve().parents or base_dir.resolve() == target_path.resolve()
+    except Exception:
+        return False
+
 # ---------------------------------------------------------------- #
 # Data Schemas
 # ---------------------------------------------------------------- #
+class ProjectAdd(BaseModel): name: str
 class UserSignup(BaseModel): email: str; username: str; password: str
 class UserLogin(BaseModel): email: str; password: str
 class DomainAdd(BaseModel): domain: str
@@ -210,6 +224,51 @@ async def add_domain(username: str, project: str, payload: DomainAdd):
     return {"message": "Domain added"}
 
 
+@app.post("/{username}/projects/add")
+async def add_project(username: str, payload: ProjectAdd):
+    project_name = payload.name.strip()
+    if not project_name:
+        raise HTTPException(status_code=400, detail="Invalid project name")
+    
+    try:
+        db.create_project(username, project_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Materialize physical vault directory structure
+    project_dir = STORAGE_DIR / username.lower() / project_name.lower()
+    project_dir.mkdir(parents=True, exist_ok=True)
+    return {"message": "Project space initialized"}
+
+
+@app.delete("/{username}/projects/{project}/remove")
+async def remove_project(username: str, project: str):
+    # Ensure no background scans are working inside this folder context
+    prefix_filter = f"{username.lower()}/{project.lower()}/"
+    with scan_lock:
+        for active_scan in ACTIVE_SCANS:
+            if active_scan.startswith(prefix_filter):
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Cannot delete project while active pipeline diagnostics are executing inside it"
+                )
+
+    try:
+        db.delete_project(username, project)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    # Compute and verify file-system removal targets securely
+    user_space = STORAGE_DIR / username.lower()
+    project_dir = user_space / project.lower()
+    
+    if project_dir.exists() and project_dir.is_dir():
+        if is_safe_path(STORAGE_DIR, project_dir):
+            shutil.rmtree(project_dir)
+            
+    return {"message": "Project data wiped successfully"}
+
+
 @app.delete("/{username}/{project}/domains/{domain}/remove")
 async def remove_domain(username: str, project: str, domain: str):
     try:
@@ -223,11 +282,26 @@ async def remove_domain(username: str, project: str, domain: str):
     return {"message": "Domain removed"}
 
 
+def wrapped_run_pipeline(username: str, project: str, domain: str, scan_key: str):
+    try:
+        run_vapt_pipeline(username, project, domain)
+    finally:
+        with scan_lock:
+            ACTIVE_SCANS.discard(scan_key)
+
+
 @app.post("/{username}/{project}/{domain}/pipeline/start")
 async def start_pipeline(username: str, project: str, domain: str, bg: BackgroundTasks):
     if not db.domain_exists(username, project, domain):
         raise HTTPException(status_code=404, detail="Domain not found")
-    bg.add_task(run_vapt_pipeline, username, project, domain)
+    
+    scan_key = f"{username.lower()}/{project.lower()}/{domain.lower()}"
+    with scan_lock:
+        if scan_key in ACTIVE_SCANS:
+            raise HTTPException(status_code=429, detail="Pipeline scan already in progress for this target")
+        ACTIVE_SCANS.add(scan_key)
+        
+    bg.add_task(wrapped_run_pipeline, username, project, domain, scan_key)
     return {"message": "Pipeline initiated"}
 
 

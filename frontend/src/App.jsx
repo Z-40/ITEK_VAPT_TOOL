@@ -127,37 +127,114 @@ function AuthPage({ view, setView, onLoginSuccess }) {
 
 function DashboardView({ username, onLogout }) {
   const [projects, setProjects] = useState([]);
-  const [newDomain, setNewDomain] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  // Fixed state bug: mapped per-project name to isolate form input states
+  const [newDomains, setNewDomains] = useState({});
 
   const loadProjects = () => {
-    fetch(`http://127.0.0.1:8000/${username}`).then(res => res.json()).then(data => setProjects(data.projects || []));
+    fetch(`http://127.0.0.1:8000/${username}`)
+      .then(res => res.json())
+      .then(data => setProjects(data.projects || []));
   };
 
   useEffect(() => { loadProjects(); }, [username]);
 
-  const handleAddDomain = async (projectName) => {
-    if(!newDomain) return;
-    await fetch(`http://127.0.0.1:8000/${username}/${projectName}/domains/add`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain: newDomain })
+  const handleAddProject = async () => {
+    if (!newProjectName.trim()) return;
+    const res = await fetch(`http://127.0.0.1:8000/${username}/projects/add`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newProjectName.trim() })
     });
-    setNewDomain("");
-    loadProjects();
+    if (res.ok) {
+      setNewProjectName("");
+      loadProjects();
+    } else {
+      const err = await res.json();
+      alert(err.detail || "Failed to create project space");
+    }
+  };
+
+  const handleRemoveProject = async (projectName) => {
+    const confirmation = window.confirm(
+      `CRITICAL WARNING:\n\nAre you sure you want to completely delete "${projectName}"?\n` +
+      `This action is completely irreversible and will permanently wipe all database definitions, ` +
+      `all mapped target domains, and completely shred all artifacts residing within the vault directory.`
+    );
+    
+    if (!confirmation) return;
+    
+    const res = await fetch(`http://127.0.0.1:8000/${username}/projects/${projectName}/remove`, {
+      method: "DELETE"
+    });
+    
+    if (res.ok) {
+      loadProjects();
+    } else {
+      const err = await res.json();
+      alert(err.detail || "Failed to complete data wipe");
+    }
+  };
+
+  const handleAddDomain = async (projectName) => {
+    const targetInput = newDomains[projectName] || "";
+    if (!targetInput.trim()) return;
+    
+    const res = await fetch(`http://127.0.0.1:8000/${username}/${projectName}/domains/add`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ domain: targetInput.trim() })
+    });
+    
+    if (res.ok) {
+      setNewDomains(prev => ({ ...prev, [projectName]: "" }));
+      loadProjects();
+    } else {
+      const err = await res.json();
+      alert(err.detail || "Failed to add domain target");
+    }
   };
 
   return (
     <div className="max-w-7xl mx-auto px-6 pt-24 pb-16 font-sans text-gray-300">
-      <div className="flex justify-between items-center mb-10 border-b border-white/10 pb-6">
-        <h1 className="text-2xl font-bold text-white">Workspace: <span className="text-emerald-400">{username}</span></h1>
-        <button onClick={onLogout} className="border border-red-500/50 text-red-400 px-4 py-2 rounded text-sm hover:bg-red-500/10 cursor-pointer bg-transparent">Sign Out</button>
+      {/* Dashboard Control Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 border-b border-white/10 pb-6 gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Workspace: <span className="text-emerald-400">{username}</span></h1>
+          <div className="flex gap-2 mt-4">
+            <input 
+              value={newProjectName} 
+              onChange={e => setNewProjectName(e.target.value)} 
+              placeholder="New Project Name" 
+              className="bg-black border border-white/20 px-3 py-1.5 text-sm rounded text-white focus:outline-none focus:border-emerald-400" 
+            />
+            <button onClick={handleAddProject} className="bg-emerald-500 hover:bg-emerald-600 text-black font-bold px-4 py-1.5 rounded text-sm cursor-pointer border-none transition">Initialize Project</button>
+          </div>
+        </div>
+        <button onClick={onLogout} className="border border-red-500/50 text-red-400 px-4 py-2 rounded text-sm hover:bg-red-500/10 cursor-pointer bg-transparent transition self-end md:self-auto">Sign Out</button>
       </div>
 
+      {/* Projects Iteration Grid */}
       {projects.map(proj => (
         <div key={proj.name} className="mb-12 border border-white/10 p-6 rounded-xl bg-zinc-900/40">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold text-white">{proj.name}</h2>
-            <div className="flex gap-2">
-              <input value={newDomain} onChange={e => setNewDomain(e.target.value)} placeholder="new-target.com" className="bg-black border border-white/20 px-3 py-1.5 text-sm rounded text-white" />
-              <button onClick={() => handleAddDomain(proj.name)} className="bg-blue-600/80 hover:bg-blue-600 text-white px-4 py-1.5 rounded text-sm cursor-pointer border-none">+ Add Target</button>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-white/5 pb-4 gap-4">
+            <div className="flex items-center gap-4">
+              <h2 className="text-xl font-bold text-white">{proj.name}</h2>
+              <button 
+                onClick={() => handleRemoveProject(proj.name)} 
+                className="text-[11px] border border-red-500/30 text-red-400/70 hover:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded cursor-pointer bg-transparent transition"
+              >
+                Wipe Project Space
+              </button>
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <input 
+                value={newDomains[proj.name] || ""} 
+                onChange={e => setNewDomains(prev => ({ ...prev, [proj.name]: e.target.value }))} 
+                placeholder="new-target.com" 
+                className="bg-black border border-white/20 px-3 py-1.5 text-sm rounded text-white flex-grow sm:flex-none focus:outline-none focus:border-blue-500" 
+              />
+              <button onClick={() => handleAddDomain(proj.name)} className="bg-blue-600/80 hover:bg-blue-600 text-white px-4 py-1.5 rounded text-sm cursor-pointer border-none transition shrink-0">+ Add Target</button>
             </div>
           </div>
           
@@ -165,10 +242,16 @@ function DashboardView({ username, onLogout }) {
             {proj.domains.map(dom => (
               <DomainCard key={dom.name} domain={dom.name} project={proj.name} username={username} refreshProjects={loadProjects} />
             ))}
-            {proj.domains.length === 0 && <p className="text-gray-500 text-sm text-center py-4">No domains added to this project yet.</p>}
+            {proj.domains.length === 0 && <p className="text-gray-500 text-sm text-center py-4 italic">No evaluation domains added to this project context yet.</p>}
           </div>
         </div>
       ))}
+      
+      {projects.length === 0 && (
+        <div className="text-center py-16 border border-dashed border-white/10 rounded-2xl">
+          <p className="text-gray-500 font-mono">No active project containers. Initialize a new project above to begin scanning.</p>
+        </div>
+      )}
     </div>
   );
 }
