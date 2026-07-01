@@ -488,7 +488,7 @@ def run_scan(host: str, port: int, timeout: float, skip_ciphers: bool = False) -
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN SYNCHRONOUS IN-MEMORY INTERFACE
 # ─────────────────────────────────────────────────────────────────────────────
-def run(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
+def scan_tls(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Accepts a structured payload dictionary containing baseline evaluation metrics,
     executes SSL/TLS validation and network handshake analyses,

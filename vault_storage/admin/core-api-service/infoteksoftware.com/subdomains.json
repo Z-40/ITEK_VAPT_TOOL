@@ -1,0 +1,13 @@
+{
+    "target": "infoteksoftware.com",
+    "subdomains": {
+        "target": "infoteksoftware.com",
+        "generated": "2026-07-01 05:38:12 UTC",
+        "alive_count": 3,
+        "subdomains": {
+            "qa.infoteksoftware.com": "35.154.219.99",
+            "retail.infoteksoftware.com": "4.247.160.15",
+            "retailuat.infoteksoftware.com": "20.204.96.158"
+        }
+    }
+}
