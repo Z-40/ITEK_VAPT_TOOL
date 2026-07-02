@@ -260,6 +260,9 @@ function DomainCard({ domain, project, username, refreshProjects }) {
   const [files, setFiles] = useState([]);
   const [viewFile, setViewFile] = useState(null);
   const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportData, setReportData] = useState(null); // { report, files_analyzed }
+  const [reportError, setReportError] = useState(null);
   const fileInputRef = useRef();
   const pollRef = useRef(null);
 
@@ -367,6 +370,22 @@ function DomainCard({ domain, project, username, refreshProjects }) {
     loadVault();
   };
 
+  const handleViewReport = async () => {
+    setReportError(null);
+    setReportData(null);
+    setReportLoading(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/report`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to generate report");
+      setReportData(data);
+    } catch (err) {
+      setReportError(err.message);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   return (
     <div className="border border-white/5 bg-black/60 p-5 rounded-lg">
       <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-3">
@@ -374,6 +393,9 @@ function DomainCard({ domain, project, username, refreshProjects }) {
         <div className="flex gap-3">
           <button onClick={handleRun} disabled={pipelineRunning} className={`px-3 py-1 rounded text-xs font-bold transition border ${pipelineRunning ? "bg-yellow-500/10 border-yellow-500/50 text-yellow-400 cursor-wait" : "bg-emerald-500/10 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"}`}>
             {pipelineRunning ? "Running…" : "Run Pipeline"}
+          </button>
+          <button onClick={handleViewReport} disabled={pipelineRunning || reportLoading || files.length === 0} title={files.length === 0 ? "No vault artifacts yet — run the pipeline first" : ""} className={`px-3 py-1 rounded text-xs font-bold transition border ${(pipelineRunning || files.length === 0) ? "bg-white/5 border-white/10 text-gray-600 cursor-not-allowed" : reportLoading ? "bg-purple-500/10 border-purple-500/50 text-purple-300 cursor-wait" : "bg-purple-500/10 border-purple-500/50 text-purple-300 hover:bg-purple-500/20 cursor-pointer"}`}>
+            {reportLoading ? "Analyzing…" : "View Report"}
           </button>
           <button onClick={handleDeleteDomain} className="text-red-500 hover:text-red-400 text-xs px-2 cursor-pointer bg-transparent border-none">Remove Domain</button>
         </div>
@@ -412,6 +434,35 @@ function DomainCard({ domain, project, username, refreshProjects }) {
           </div>
         )}
       </div>
+
+      {/* AI Report Modal */}
+      {(reportLoading || reportData || reportError) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+          <div className="bg-zinc-950 border border-white/10 rounded-xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b border-white/10">
+              <h4 className="font-mono text-purple-300 text-sm">AI Report — {domain}</h4>
+              <button onClick={() => { setReportData(null); setReportError(null); }} className="text-gray-400 hover:text-white font-bold cursor-pointer bg-transparent border-none">✕</button>
+            </div>
+            <div className="p-5 overflow-auto">
+              {reportLoading && (
+                <div className="flex items-center gap-2 text-sm text-purple-300">
+                  <span className="h-2 w-2 rounded-full bg-purple-400 animate-pulse" />
+                  Sending vault artifacts to the AI analyst…
+                </div>
+              )}
+              {reportError && <p className="text-red-400 text-sm">{reportError}</p>}
+              {reportData && (
+                <>
+                  <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-3">
+                    Analyzed {reportData.files_analyzed.length} artifact{reportData.files_analyzed.length === 1 ? "" : "s"}: {reportData.files_analyzed.join(", ")}
+                  </p>
+                  <pre className="text-sm text-gray-200 font-sans whitespace-pre-wrap leading-relaxed">{reportData.report}</pre>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* File Viewer Modal */}
       {viewFile && (
