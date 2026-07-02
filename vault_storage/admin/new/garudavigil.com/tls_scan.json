@@ -1,0 +1,12 @@
+{
+    "timestamp": "2026-07-02T06:09:05Z",
+    "total_targets_scanned": 6,
+    "results": {
+        "api.garudavigil.com": {
+            "host": "api.garudavigil.com",
+            "port": 443,
+            "ip": "49.248.170.138",
+            "scan_time": "2026-07-02 11:36:54",
+            "cert_subject": "*.garudavigil.com",
+            "cert_issuer": "GlobalSign GCC R6 AlphaSSL CA 2025",
+            "cert_valid_from": 

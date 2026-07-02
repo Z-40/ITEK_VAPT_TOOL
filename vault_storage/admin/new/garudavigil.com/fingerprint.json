@@ -1,0 +1,117 @@
+{
+    "target": "garudavigil.com",
+    "generated": "2026-07-02 06:09:26 UTC",
+    "scan_duration_seconds": 21.48,
+    "total_subdomains_processed": 6,
+    "results": [
+        {
+            "subdomain": "api.garudavigil.com",
+            "resolved_ip": "49.248.170.138",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 1,
+            "endpoints": [
+                {
+                    "url": "https://api.garudavigil.com",
+                    "status_code": 404,
+                    "title": "Error",
+                    "server": null,
+                    "cdn": null,
+                    "tech": [
+                        "Express",
+                        "Nginx:1.24.0",
+                        "Node.js",
+                        "Ubuntu"
+                    ],
+                    "pipeline_timestamp": "2026-07-02T06:09:26Z"
+                }
+            ]
+        },
+        {
+            "subdomain": "assets.garudavigil.com",
+            "resolved_ip": "13.203.81.221",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 1,
+            "endpoints": [
+                {
+                    "url": "https://assets.garudavigil.com",
+                    "status_code": 200,
+                    "title": "HRADMIN-Asset Management",
+                    "server": null,
+                    "cdn": null,
+                    "tech": [
+                        "Nginx:1.18.0",
+                        "Ubuntu"
+                    ],
+                    "pipeline_timestamp": "2026-07-02T06:09:26Z"
+                }
+            ]
+        },
+        {
+            "subdomain": "demo.garudavigil.com",
+            "resolved_ip": "13.126.17.24",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 1,
+            "endpoints": [
+                {
+                    "url": "http://demo.garudavigil.com",
+                    "status_code": 200,
+                    "title": "Panchajanya",
+                    "server": null,
+                    "cdn": null,
+                    "tech": [
+                        "Nginx:1.24.0",
+                        "Ubuntu"
+                    ],
+                    "pipeline_timestamp": "2026-07-02T06:09:26Z"
+                }
+            ]
+        },
+        {
+            "subdomain": "launch.garudavigil.com",
+            "resolved_ip": "20.197.18.181",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 1,
+            "endpoints": [
+                {
+                    "url": "https://launch.garudavigil.com",
+                    "status_code": 200,
+                    "title": "GarudaVigil",
+                    "server": null,
+                    "cdn": null,
+                    "tech": [
+                        "Nginx:1.24.0",
+                        "Ubuntu"
+                    ],
+                    "pipeline_timestamp": "2026-07-02T06:09:26Z"
+                }
+            ]
+        },
+        {
+            "subdomain": "launching.garudavigil.com",
+            "resolved_ip": "20.192.20.134",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 0,
+            "endpoints": []
+        },
+        {
+            "subdomain": "test.garudavigil.com",
+            "resolved_ip": "49.248.170.138",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 1,
+            "endpoints": [
+                {
+                    "url": "https://test.garudavigil.com",
+                    "status_code": 200,
+                    "title": "GarudaPass Platform",
+                    "server": null,
+                    "cdn": null,
+                    "tech": [
+                        "Nginx:1.24.0",
+                        "Ubuntu"
+                    ],
+                    "pipeline_timestamp": "2026-07-02T06:09:26Z"
+                }
+            ]
+        }
+    ]
+}

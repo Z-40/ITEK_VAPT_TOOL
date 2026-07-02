@@ -1,0 +1,138 @@
+{
+    "source_manifest": "garudavigil.com",
+    "timestamp": "2026-07-02T11:39:36.055501",
+    "total_targets_processed": 6,
+    "hosts": [
+        {
+            "ip": "49.248.170.138",
+            "scan_timestamp": "2026-07-02T11:39:28.482577",
+            "total_open_ports": 3,
+            "open_ports": [
+                {
+                    "port": 80,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 200 OK Server: nginx/1.24.0 (Ubuntu) Date: Thu, 02 Jul 2026 06:09:27 GMT Content-Type: text/html Content-Len..."
+                },
+                {
+                    "port": 443,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 400 Bad Request Server: nginx/1.24.0 (Ubuntu) Date: Thu, 02 Jul 2026 06:09:27 GMT Content-Type: text/html Co..."
+                },
+                {
+                    "port": 8443,
+                    "status": "open",
+                    "protocol": "Unknown",
+                    "banner": "No banner response captured"
+                }
+            ],
+            "subdomain_alias": "api.garudavigil.com"
+        },
+        {
+            "ip": "13.203.81.221",
+            "scan_timestamp": "2026-07-02T11:39:29.997900",
+            "total_open_ports": 2,
+            "open_ports": [
+                {
+                    "port": 22,
+                    "status": "open",
+                    "protocol": "SSH",
+                    "banner": "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.15"
+                },
+                {
+                    "port": 443,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 400 Bad Request Server: nginx/1.18.0 (Ubuntu) Date: Thu, 02 Jul 2026 06:09:28 GMT Content-Type: text/html Co..."
+                }
+            ],
+            "subdomain_alias": "assets.garudavigil.com"
+        },
+        {
+            "ip": "13.126.17.24",
+            "scan_timestamp": "2026-07-02T11:39:31.509320",
+            "total_open_ports": 2,
+            "open_ports": [
+                {
+                    "port": 22,
+                    "status": "open",
+                    "protocol": "SSH",
+                    "banner": "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.16 Invalid SSH identification string."
+                },
+                {
+                    "port": 80,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 200 OK Server: nginx/1.24.0 (Ubuntu) Date: Thu, 02 Jul 2026 06:09:30 GMT Content-Type: text/html Content-Len..."
+                }
+            ],
+            "subdomain_alias": "demo.garudavigil.com"
+        },
+        {
+            "ip": "20.197.18.181",
+            "scan_timestamp": "2026-07-02T11:39:33.027338",
+            "total_open_ports": 4,
+            "open_ports": [
+                {
+                    "port": 22,
+                    "status": "open",
+                    "protocol": "SSH",
+                    "banner": "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.16"
+                },
+                {
+                    "port": 80,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 301 Moved Permanently Server: nginx/1.24.0 (Ubuntu) Date: Thu, 02 Jul 2026 06:09:31 GMT Content-Type: text/h..."
+                },
+                {
+                    "port": 443,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 400 Bad Request Server: nginx/1.24.0 (Ubuntu) Date: Thu, 02 Jul 2026 06:09:31 GMT Content-Type: text/html Co..."
+                },
+                {
+                    "port": 8080,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.0 500 Internal Server Error content-length: 113 Content-Type: application/json Referrer-Policy: no-referrer St..."
+                }
+            ],
+            "subdomain_alias": "launch.garudavigil.com"
+        },
+        {
+            "ip": "20.192.20.134",
+            "scan_timestamp": "2026-07-02T11:39:34.542831",
+            "total_open_ports": 0,
+            "open_ports": [],
+            "subdomain_alias": "launching.garudavigil.com"
+        },
+        {
+            "ip": "49.248.170.138",
+            "scan_timestamp": "2026-07-02T11:39:36.055406",
+            "total_open_ports": 3,
+            "open_ports": [
+                {
+                    "port": 80,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 200 OK Server: nginx/1.24.0 (Ubuntu) Date: Thu, 02 Jul 2026 06:09:34 GMT Content-Type: text/html Content-Len..."
+                },
+                {
+                    "port": 443,
+                    "status": "open",
+                    "protocol": "HTTP Gateway",
+                    "banner": "HTTP/1.1 400 Bad Request Server: nginx/1.24.0 (Ubuntu) Date: Thu, 02 Jul 2026 06:09:34 GMT Content-Type: text/html Co..."
+                },
+                {
+                    "port": 8443,
+                    "status": "open",
+                    "protocol": "Unknown",
+                    "banner": "No banner response captured"
+                }
+            ],
+            "subdomain_alias": "test.garudavigil.com"
+        }
+    ]
+}

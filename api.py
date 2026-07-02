@@ -13,7 +13,10 @@ import db
 # Custom Pipeline Modules (Stubs for Testing)
 try: from features.recon.enumerate import enumerate as run_enum
 except ImportError: 
-    def run_enum(domain: str): return [f"api.{domain}", domain]
+    def run_enum(input_data: dict):
+        domain = input_data.get("domain", "")
+        return {"target": domain, "generated": None, "alive_count": 2,
+                "subdomains": {f"api.{domain}": "0.0.0.0", domain: "0.0.0.0"}}
 
 try: from features.recon.dns_scan import scan_dns
 except ImportError: 
@@ -81,7 +84,7 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
         module_status = {}
 
         # --- Enumeration is the seed step; everything else consumes its output ---
-        enum_result = {"target": domain, "subdomains": run_enum(domain)}
+        enum_result = run_enum({"domain": domain})
         module_status["enumerate"] = "success" if _safe_write_json(domain_dir / "subdomains.json", enum_result) else "empty"
 
         # --- Downstream recon modules, each fed the enumeration data ---
