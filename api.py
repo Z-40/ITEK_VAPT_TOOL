@@ -10,6 +10,7 @@ import json
 import os
 import db
 try:
+    import httpx
     from google import genai
     from google.genai import types as genai_types
     _GEMINI_SDK_AVAILABLE = True
@@ -31,7 +32,19 @@ def get_gemini_client():
         )
     if _gemini_client is None:
         try:
-            _gemini_client = genai.Client()  # picks up GEMINI_API_KEY from the environment
+            # google-genai's async client silently prefers aiohttp over httpx
+            # whenever aiohttp happens to be importable in the environment.
+            # aiohttp's DNS resolver (aiodns/c-ares) has a long-standing bug on
+            # Windows where it fails to read the system DNS config and throws
+            # "Could not contact DNS servers" -- even though the OS resolver
+            # (what ping/nslookup use) works fine. Passing an explicit
+            # httpx.AsyncClient forces google-genai down the httpx code path
+            # unconditionally, sidestepping aiohttp/aiodns entirely.
+            _gemini_client = genai.Client(
+                http_options=genai_types.HttpOptions(
+                    httpx_async_client=httpx.AsyncClient(),
+                )
+            )  # picks up GEMINI_API_KEY from the environment
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"AI report agent is not configured: {e}")
     return _gemini_client
