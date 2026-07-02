@@ -1,0 +1,29 @@
+{
+    "target": "infoteksoftware.com",
+    "generated": "2026-07-02 09:03:20 UTC",
+    "scan_duration_seconds": 21.43,
+    "total_subdomains_processed": 3,
+    "results": [
+        {
+            "subdomain": "qa.infoteksoftware.com",
+            "resolved_ip": "35.154.219.99",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 0,
+            "endpoints": []
+        },
+        {
+            "subdomain": "retail.infoteksoftware.com",
+            "resolved_ip": "4.247.160.15",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 0,
+            "endpoints": []
+        },
+        {
+            "subdomain": "retailuat.infoteksoftware.com",
+            "resolved_ip": "20.204.96.158",
+            "waf_fingerprint": "Unreachable (AttributeError)",
+            "endpoints_count": 0,
+            "endpoints": []
+        }
+    ]
+}

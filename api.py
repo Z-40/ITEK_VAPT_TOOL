@@ -9,21 +9,32 @@ import shutil
 import json
 import os
 import db
-from anthropic import AsyncAnthropic
+try:
+    from google import genai
+    from google.genai import types as genai_types
+    _GEMINI_SDK_AVAILABLE = True
+except ImportError:
+    _GEMINI_SDK_AVAILABLE = False
 
-REPORT_MODEL = "claude-sonnet-5"
-_anthropic_client = None
+REPORT_MODEL = "gemini-2.5-flash"
+_gemini_client = None
 
-def get_anthropic_client() -> AsyncAnthropic:
-    """Lazily construct the Anthropic client on first use, so a missing
-    ANTHROPIC_API_KEY only breaks report generation, not the whole app."""
-    global _anthropic_client
-    if _anthropic_client is None:
+def get_gemini_client():
+    """Lazily construct the Gemini client on first use, so a missing
+    google-genai package or GEMINI_API_KEY only breaks report generation,
+    not the whole app."""
+    global _gemini_client
+    if not _GEMINI_SDK_AVAILABLE:
+        raise HTTPException(
+            status_code=500,
+            detail="AI report agent is not installed on the server. Run: pip install google-genai",
+        )
+    if _gemini_client is None:
         try:
-            _anthropic_client = AsyncAnthropic()
+            _gemini_client = genai.Client()  # picks up GEMINI_API_KEY from the environment
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"AI report agent is not configured: {e}")
-    return _anthropic_client
+    return _gemini_client
 
 # Custom Pipeline Modules (Stubs for Testing)
 try: from features.recon.enumerate import enumerate as run_enum
@@ -294,21 +305,22 @@ async def get_ai_report(username: str, project: str, domain: str):
     )
 
     try:
-        client = get_anthropic_client()
-        response = await client.messages.create(
+        client = get_gemini_client()
+        response = await client.aio.models.generate_content(
             model=REPORT_MODEL,
-            max_tokens=4000,
-            system=system_prompt,
-            messages=[{
-                "role": "user",
-                "content": f"Target domain: {domain}\n\nVault artifacts:\n\n{artifact_blob}",
-            }],
+            contents=f"Target domain: {domain}\n\nVault artifacts:\n\n{artifact_blob}",
+            config=genai_types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                max_output_tokens=4000,
+            ),
         )
-        report_text = "".join(
-            block.text for block in response.content if getattr(block, "type", None) == "text"
-        ).strip()
+        report_text = (response.text or "").strip()
 
-        if getattr(response, "stop_reason", None) == "refusal" or not report_text:
+        # Gemini surfaces blocked/refused generations via prompt_feedback or an
+        # empty candidate list rather than raising — check explicitly instead
+        # of silently returning a blank report.
+        blocked = getattr(getattr(response, "prompt_feedback", None), "block_reason", None)
+        if blocked or not report_text:
             raise HTTPException(
                 status_code=502,
                 detail="The AI analyst declined to generate a report for this content. "

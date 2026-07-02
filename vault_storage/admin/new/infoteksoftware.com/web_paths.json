@@ -1,0 +1,82 @@
+{
+    "scan_metadata": {
+        "timestamp": "2026-07-02T09:03:54.342921+00:00",
+        "status": "completed",
+        "total_subdomains_scanned": 3,
+        "subdomains_with_results": 3,
+        "crawl_depth": 3,
+        "total_verified_live_urls": 19,
+        "total_endpoints_with_params": 4
+    },
+    "results": [
+        {
+            "subdomain": "qa.infoteksoftware.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 0,
+            "live_urls": [],
+            "endpoints_with_params": []
+        },
+        {
+            "subdomain": "retail.infoteksoftware.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 19,
+            "live_urls": [
+                "https://retail.infoteksoftware.com",
+                "https://retail.infoteksoftware.com/electronic-article-surveillance.html?vertical=retails-solutions",
+                "https://retail.infoteksoftware.com/electronic-shelf-label.html?vertical=retails-solutions",
+                "https://retail.infoteksoftware.com/item-level-tracking.html?vertical=retails-solutions",
+                "https://retail.infoteksoftware.com/js/contact_me.js",
+                "https://retail.infoteksoftware.com/js/freelancer.min.js",
+                "https://retail.infoteksoftware.com/js/includes-functions.js",
+                "https://retail.infoteksoftware.com/js/jqBootstrapValidation.js",
+                "https://retail.infoteksoftware.com/js/lightslider.js",
+                "https://retail.infoteksoftware.com/menu/js/jquery.mobile.custom.min.js",
+                "https://retail.infoteksoftware.com/menu/js/main.js",
+                "https://retail.infoteksoftware.com/menu/js/modernizr.js",
+                "https://retail.infoteksoftware.com/supply-chain-and-warehouse-management.html?vertical=retails-solutions",
+                "https://retail.infoteksoftware.com/vendor/bootstrap-4/jquery.smartmenus.bootstrap-4.js",
+                "https://retail.infoteksoftware.com/vendor/bootstrap/js/bootstrap.bundle.min.js",
+                "https://retail.infoteksoftware.com/vendor/jquery-easing/jquery.easing.min.js",
+                "https://retail.infoteksoftware.com/vendor/jquery.smartmenus.js",
+                "https://retail.infoteksoftware.com/vendor/jquery/jquery.min.js",
+                "https://retail.infoteksoftware.com/vendor/magnific-popup/jquery.magnific-popup.min.js"
+            ],
+            "endpoints_with_params": [
+                {
+                    "url": "https://retail.infoteksoftware.com/electronic-article-surveillance.html?vertical=retails-solutions",
+                    "parameters": [
+                        "vertical"
+                    ]
+                },
+                {
+                    "url": "https://retail.infoteksoftware.com/electronic-shelf-label.html?vertical=retails-solutions",
+                    "parameters": [
+                        "vertical"
+                    ]
+                },
+                {
+                    "url": "https://retail.infoteksoftware.com/item-level-tracking.html?vertical=retails-solutions",
+                    "parameters": [
+                        "vertical"
+                    ]
+                },
+                {
+                    "url": "https://retail.infoteksoftware.com/supply-chain-and-warehouse-management.html?vertical=retails-solutions",
+                    "parameters": [
+                        "vertical"
+                    ]
+                }
+            ]
+        },
+        {
+            "subdomain": "retailuat.infoteksoftware.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 0,
+            "live_urls": [],
+            "endpoints_with_params": []
+        }
+    ]
+}
