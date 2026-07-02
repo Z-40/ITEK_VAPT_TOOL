@@ -1,5 +1,5 @@
 {
-    "target": "infoteksoftware.com",
+    "target": "garudavigil.com",
     "modules": {
         "enumerate": "success",
         "dns_scan": "success",

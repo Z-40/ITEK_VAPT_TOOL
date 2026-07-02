@@ -1,0 +1,476 @@
+{
+    "target": "garudavigil.com",
+    "generated": "2026-07-02 12:47:09 UTC",
+    "source_file": "pipeline_memory_buffer",
+    "subdomain_count": 6,
+    "results": [
+        {
+            "subdomain": "api.garudavigil.com",
+            "ip": "49.248.170.138",
+            "scan_timestamp": "2026-07-02T12:47:09Z",
+            "finding_count": 10,
+            "findings": [
+                {
+                    "title": "DNSSEC Not Deployed",
+                    "category": "DNS Security",
+                    "detail": "No DNSKEY or DS records present; resolvers cannot cryptographically verify the authenticity of DNS responses for this domain.",
+                    "evidence": "DNSKEY: absent | DS at parent zone: absent",
+                    "remediation": "Enable DNSSEC at your DNS provider and publish the resulting DS record at your domain registrar."
+                },
+                {
+                    "title": "No MX Records Found",
+                    "category": "Mail",
+                    "detail": "Domain has no MX records and is incapable of receiving inbound email.",
+                    "evidence": "MX query returned zero records",
+                    "remediation": "Add MX records pointing to your mail gateway if inbound email delivery is required for this domain."
+                },
+                {
+                    "title": "SPF Record Missing",
+                    "category": "Email Security",
+                    "detail": "No SPF policy was found on this subdomain or its organisational apex; email spoofing from this domain is unmitigated.",
+                    "evidence": "api.garudavigil.com (absent), garudavigil.com (absent)",
+                    "remediation": "Publish a valid SPF TXT record at the apex domain enumerating all authorised sending sources."
+                },
+                {
+                    "title": "DMARC Record Missing",
+                    "category": "Email Security",
+                    "detail": "No DMARC policy was found on this subdomain or its apex; spoofing compliance enforcement and aggregate reporting are absent.",
+                    "evidence": "_dmarc.api.garudavigil.com (absent), _dmarc.garudavigil.com (absent)",
+                    "remediation": "Publish a DMARC TXT record at _dmarc.<apex> with at minimum a monitoring policy (p=none) to begin collecting reports."
+                },
+                {
+                    "title": "DKIM Not Detected (Heuristic)",
+                    "category": "Email Security",
+                    "detail": "No DKIM selector TXT records were found across the standard set of common enterprise selectors for this subdomain.",
+                    "evidence": "Selectors probed: default, google, mail, dkim, k1, k2, smtp, email, mta, selector1, selector2, mandrill, sendgrid, mailchimp, amazonses",
+                    "remediation": "Configure DKIM signing on your mail platform and publish the public key as a TXT record at <selector>._domainkey.<domain>."
+                },
+                {
+                    "title": "MTA-STS Not Configured",
+                    "category": "Email Security",
+                    "detail": "No MTA-STS TXT record was found on this subdomain or its apex; opportunistic TLS for inbound SMTP is not enforced.",
+                    "evidence": "_mta-sts.api.garudavigil.com (absent), _mta-sts.garudavigil.com (absent)",
+                    "remediation": "Publish an MTA-STS policy file at https://mta-sts.<apex>/.well-known/mta-sts.txt and reference it with a _mta-sts TXT record."
+                },
+                {
+                    "title": "TLS-RPT Not Configured",
+                    "category": "Email Security",
+                    "detail": "No SMTP TLS Reporting record was found on this subdomain or its apex; TLS delivery failures will remain unmonitored.",
+                    "evidence": "_smtp._tls.api.garudavigil.com (absent), _smtp._tls.garudavigil.com (absent)",
+                    "remediation": "Publish a TLS-RPT TXT record at _smtp._tls.<domain> specifying a mailto: reporting destination."
+                },
+                {
+                    "title": "CAA Records Missing",
+                    "category": "PKI",
+                    "detail": "No CAA records restrict which Certificate Authorities may issue TLS certificates for this domain.",
+                    "evidence": "CAA record query returned no results",
+                    "remediation": "Add CAA records naming only your approved certificate authority partners to prevent unauthorised certificate issuance."
+                },
+                {
+                    "title": "TLSA / DANE Not Configured",
+                    "category": "PKI",
+                    "detail": "No TLSA record for port 443; DNS-Based Authentication of Named Entities (DANE) certificate pinning is not enforced for HTTPS.",
+                    "evidence": "No TLSA record at _443._tcp.api.garudavigil.com",
+                    "remediation": "Publish a TLSA record to anchor your TLS certificate fingerprint in DNS via the DANE protocol."
+                },
+                {
+                    "title": "BIMI Not Configured",
+                    "category": "Brand Trust",
+                    "detail": "No BIMI record found; brand logo display in BIMI-capable mail clients is unavailable for this domain.",
+                    "evidence": "No matching TXT record at default._bimi.api.garudavigil.com",
+                    "remediation": "Publish a BIMI TXT record at default._bimi.<domain> pointing to a Tiny P/S SVG brand logo, and optionally include a VMC certificate."
+                }
+            ]
+        },
+        {
+            "subdomain": "assets.garudavigil.com",
+            "ip": "13.203.81.221",
+            "scan_timestamp": "2026-07-02T12:47:09Z",
+            "finding_count": 10,
+            "findings": [
+                {
+                    "title": "DNSSEC Not Deployed",
+                    "category": "DNS Security",
+                    "detail": "No DNSKEY or DS records present; resolvers cannot cryptographically verify the authenticity of DNS responses for this domain.",
+                    "evidence": "DNSKEY: absent | DS at parent zone: absent",
+                    "remediation": "Enable DNSSEC at your DNS provider and publish the resulting DS record at your domain registrar."
+                },
+                {
+                    "title": "No MX Records Found",
+                    "category": "Mail",
+                    "detail": "Domain has no MX records and is incapable of receiving inbound email.",
+                    "evidence": "MX query returned zero records",
+                    "remediation": "Add MX records pointing to your mail gateway if inbound email delivery is required for this domain."
+                },
+                {
+                    "title": "SPF Record Missing",
+                    "category": "Email Security",
+                    "detail": "No SPF policy was found on this subdomain or its organisational apex; email spoofing from this domain is unmitigated.",
+                    "evidence": "assets.garudavigil.com (absent), garudavigil.com (absent)",
+                    "remediation": "Publish a valid SPF TXT record at the apex domain enumerating all authorised sending sources."
+                },
+                {
+                    "title": "DMARC Record Missing",
+                    "category": "Email Security",
+                    "detail": "No DMARC policy was found on this subdomain or its apex; spoofing compliance enforcement and aggregate reporting are absent.",
+                    "evidence": "_dmarc.assets.garudavigil.com (absent), _dmarc.garudavigil.com (absent)",
+                    "remediation": "Publish a DMARC TXT record at _dmarc.<apex> with at minimum a monitoring policy (p=none) to begin collecting reports."
+                },
+                {
+                    "title": "DKIM Not Detected (Heuristic)",
+                    "category": "Email Security",
+                    "detail": "No DKIM selector TXT records were found across the standard set of common enterprise selectors for this subdomain.",
+                    "evidence": "Selectors probed: default, google, mail, dkim, k1, k2, smtp, email, mta, selector1, selector2, mandrill, sendgrid, mailchimp, amazonses",
+                    "remediation": "Configure DKIM signing on your mail platform and publish the public key as a TXT record at <selector>._domainkey.<domain>."
+                },
+                {
+                    "title": "MTA-STS Not Configured",
+                    "category": "Email Security",
+                    "detail": "No MTA-STS TXT record was found on this subdomain or its apex; opportunistic TLS for inbound SMTP is not enforced.",
+                    "evidence": "_mta-sts.assets.garudavigil.com (absent), _mta-sts.garudavigil.com (absent)",
+                    "remediation": "Publish an MTA-STS policy file at https://mta-sts.<apex>/.well-known/mta-sts.txt and reference it with a _mta-sts TXT record."
+                },
+                {
+                    "title": "TLS-RPT Not Configured",
+                    "category": "Email Security",
+                    "detail": "No SMTP TLS Reporting record was found on this subdomain or its apex; TLS delivery failures will remain unmonitored.",
+                    "evidence": "_smtp._tls.assets.garudavigil.com (absent), _smtp._tls.garudavigil.com (absent)",
+                    "remediation": "Publish a TLS-RPT TXT record at _smtp._tls.<domain> specifying a mailto: reporting destination."
+                },
+                {
+                    "title": "CAA Records Missing",
+                    "category": "PKI",
+                    "detail": "No CAA records restrict which Certificate Authorities may issue TLS certificates for this domain.",
+                    "evidence": "CAA record query returned no results",
+                    "remediation": "Add CAA records naming only your approved certificate authority partners to prevent unauthorised certificate issuance."
+                },
+                {
+                    "title": "TLSA / DANE Not Configured",
+                    "category": "PKI",
+                    "detail": "No TLSA record for port 443; DNS-Based Authentication of Named Entities (DANE) certificate pinning is not enforced for HTTPS.",
+                    "evidence": "No TLSA record at _443._tcp.assets.garudavigil.com",
+                    "remediation": "Publish a TLSA record to anchor your TLS certificate fingerprint in DNS via the DANE protocol."
+                },
+                {
+                    "title": "BIMI Not Configured",
+                    "category": "Brand Trust",
+                    "detail": "No BIMI record found; brand logo display in BIMI-capable mail clients is unavailable for this domain.",
+                    "evidence": "No matching TXT record at default._bimi.assets.garudavigil.com",
+                    "remediation": "Publish a BIMI TXT record at default._bimi.<domain> pointing to a Tiny P/S SVG brand logo, and optionally include a VMC certificate."
+                }
+            ]
+        },
+        {
+            "subdomain": "demo.garudavigil.com",
+            "ip": "13.126.17.24",
+            "scan_timestamp": "2026-07-02T12:47:10Z",
+            "finding_count": 10,
+            "findings": [
+                {
+                    "title": "DNSSEC Not Deployed",
+                    "category": "DNS Security",
+                    "detail": "No DNSKEY or DS records present; resolvers cannot cryptographically verify the authenticity of DNS responses for this domain.",
+                    "evidence": "DNSKEY: absent | DS at parent zone: absent",
+                    "remediation": "Enable DNSSEC at your DNS provider and publish the resulting DS record at your domain registrar."
+                },
+                {
+                    "title": "No MX Records Found",
+                    "category": "Mail",
+                    "detail": "Domain has no MX records and is incapable of receiving inbound email.",
+                    "evidence": "MX query returned zero records",
+                    "remediation": "Add MX records pointing to your mail gateway if inbound email delivery is required for this domain."
+                },
+                {
+                    "title": "SPF Record Missing",
+                    "category": "Email Security",
+                    "detail": "No SPF policy was found on this subdomain or its organisational apex; email spoofing from this domain is unmitigated.",
+                    "evidence": "demo.garudavigil.com (absent), garudavigil.com (absent)",
+                    "remediation": "Publish a valid SPF TXT record at the apex domain enumerating all authorised sending sources."
+                },
+                {
+                    "title": "DMARC Record Missing",
+                    "category": "Email Security",
+                    "detail": "No DMARC policy was found on this subdomain or its apex; spoofing compliance enforcement and aggregate reporting are absent.",
+                    "evidence": "_dmarc.demo.garudavigil.com (absent), _dmarc.garudavigil.com (absent)",
+                    "remediation": "Publish a DMARC TXT record at _dmarc.<apex> with at minimum a monitoring policy (p=none) to begin collecting reports."
+                },
+                {
+                    "title": "DKIM Not Detected (Heuristic)",
+                    "category": "Email Security",
+                    "detail": "No DKIM selector TXT records were found across the standard set of common enterprise selectors for this subdomain.",
+                    "evidence": "Selectors probed: default, google, mail, dkim, k1, k2, smtp, email, mta, selector1, selector2, mandrill, sendgrid, mailchimp, amazonses",
+                    "remediation": "Configure DKIM signing on your mail platform and publish the public key as a TXT record at <selector>._domainkey.<domain>."
+                },
+                {
+                    "title": "MTA-STS Not Configured",
+                    "category": "Email Security",
+                    "detail": "No MTA-STS TXT record was found on this subdomain or its apex; opportunistic TLS for inbound SMTP is not enforced.",
+                    "evidence": "_mta-sts.demo.garudavigil.com (absent), _mta-sts.garudavigil.com (absent)",
+                    "remediation": "Publish an MTA-STS policy file at https://mta-sts.<apex>/.well-known/mta-sts.txt and reference it with a _mta-sts TXT record."
+                },
+                {
+                    "title": "TLS-RPT Not Configured",
+                    "category": "Email Security",
+                    "detail": "No SMTP TLS Reporting record was found on this subdomain or its apex; TLS delivery failures will remain unmonitored.",
+                    "evidence": "_smtp._tls.demo.garudavigil.com (absent), _smtp._tls.garudavigil.com (absent)",
+                    "remediation": "Publish a TLS-RPT TXT record at _smtp._tls.<domain> specifying a mailto: reporting destination."
+                },
+                {
+                    "title": "CAA Records Missing",
+                    "category": "PKI",
+                    "detail": "No CAA records restrict which Certificate Authorities may issue TLS certificates for this domain.",
+                    "evidence": "CAA record query returned no results",
+                    "remediation": "Add CAA records naming only your approved certificate authority partners to prevent unauthorised certificate issuance."
+                },
+                {
+                    "title": "TLSA / DANE Not Configured",
+                    "category": "PKI",
+                    "detail": "No TLSA record for port 443; DNS-Based Authentication of Named Entities (DANE) certificate pinning is not enforced for HTTPS.",
+                    "evidence": "No TLSA record at _443._tcp.demo.garudavigil.com",
+                    "remediation": "Publish a TLSA record to anchor your TLS certificate fingerprint in DNS via the DANE protocol."
+                },
+                {
+                    "title": "BIMI Not Configured",
+                    "category": "Brand Trust",
+                    "detail": "No BIMI record found; brand logo display in BIMI-capable mail clients is unavailable for this domain.",
+                    "evidence": "No matching TXT record at default._bimi.demo.garudavigil.com",
+                    "remediation": "Publish a BIMI TXT record at default._bimi.<domain> pointing to a Tiny P/S SVG brand logo, and optionally include a VMC certificate."
+                }
+            ]
+        },
+        {
+            "subdomain": "launch.garudavigil.com",
+            "ip": "20.197.18.181",
+            "scan_timestamp": "2026-07-02T12:47:10Z",
+            "finding_count": 10,
+            "findings": [
+                {
+                    "title": "DNSSEC Not Deployed",
+                    "category": "DNS Security",
+                    "detail": "No DNSKEY or DS records present; resolvers cannot cryptographically verify the authenticity of DNS responses for this domain.",
+                    "evidence": "DNSKEY: absent | DS at parent zone: absent",
+                    "remediation": "Enable DNSSEC at your DNS provider and publish the resulting DS record at your domain registrar."
+                },
+                {
+                    "title": "No MX Records Found",
+                    "category": "Mail",
+                    "detail": "Domain has no MX records and is incapable of receiving inbound email.",
+                    "evidence": "MX query returned zero records",
+                    "remediation": "Add MX records pointing to your mail gateway if inbound email delivery is required for this domain."
+                },
+                {
+                    "title": "SPF Record Missing",
+                    "category": "Email Security",
+                    "detail": "No SPF policy was found on this subdomain or its organisational apex; email spoofing from this domain is unmitigated.",
+                    "evidence": "launch.garudavigil.com (absent), garudavigil.com (absent)",
+                    "remediation": "Publish a valid SPF TXT record at the apex domain enumerating all authorised sending sources."
+                },
+                {
+                    "title": "DMARC Record Missing",
+                    "category": "Email Security",
+                    "detail": "No DMARC policy was found on this subdomain or its apex; spoofing compliance enforcement and aggregate reporting are absent.",
+                    "evidence": "_dmarc.launch.garudavigil.com (absent), _dmarc.garudavigil.com (absent)",
+                    "remediation": "Publish a DMARC TXT record at _dmarc.<apex> with at minimum a monitoring policy (p=none) to begin collecting reports."
+                },
+                {
+                    "title": "DKIM Not Detected (Heuristic)",
+                    "category": "Email Security",
+                    "detail": "No DKIM selector TXT records were found across the standard set of common enterprise selectors for this subdomain.",
+                    "evidence": "Selectors probed: default, google, mail, dkim, k1, k2, smtp, email, mta, selector1, selector2, mandrill, sendgrid, mailchimp, amazonses",
+                    "remediation": "Configure DKIM signing on your mail platform and publish the public key as a TXT record at <selector>._domainkey.<domain>."
+                },
+                {
+                    "title": "MTA-STS Not Configured",
+                    "category": "Email Security",
+                    "detail": "No MTA-STS TXT record was found on this subdomain or its apex; opportunistic TLS for inbound SMTP is not enforced.",
+                    "evidence": "_mta-sts.launch.garudavigil.com (absent), _mta-sts.garudavigil.com (absent)",
+                    "remediation": "Publish an MTA-STS policy file at https://mta-sts.<apex>/.well-known/mta-sts.txt and reference it with a _mta-sts TXT record."
+                },
+                {
+                    "title": "TLS-RPT Not Configured",
+                    "category": "Email Security",
+                    "detail": "No SMTP TLS Reporting record was found on this subdomain or its apex; TLS delivery failures will remain unmonitored.",
+                    "evidence": "_smtp._tls.launch.garudavigil.com (absent), _smtp._tls.garudavigil.com (absent)",
+                    "remediation": "Publish a TLS-RPT TXT record at _smtp._tls.<domain> specifying a mailto: reporting destination."
+                },
+                {
+                    "title": "CAA Records Missing",
+                    "category": "PKI",
+                    "detail": "No CAA records restrict which Certificate Authorities may issue TLS certificates for this domain.",
+                    "evidence": "CAA record query returned no results",
+                    "remediation": "Add CAA records naming only your approved certificate authority partners to prevent unauthorised certificate issuance."
+                },
+                {
+                    "title": "TLSA / DANE Not Configured",
+                    "category": "PKI",
+                    "detail": "No TLSA record for port 443; DNS-Based Authentication of Named Entities (DANE) certificate pinning is not enforced for HTTPS.",
+                    "evidence": "No TLSA record at _443._tcp.launch.garudavigil.com",
+                    "remediation": "Publish a TLSA record to anchor your TLS certificate fingerprint in DNS via the DANE protocol."
+                },
+                {
+                    "title": "BIMI Not Configured",
+                    "category": "Brand Trust",
+                    "detail": "No BIMI record found; brand logo display in BIMI-capable mail clients is unavailable for this domain.",
+                    "evidence": "No matching TXT record at default._bimi.launch.garudavigil.com",
+                    "remediation": "Publish a BIMI TXT record at default._bimi.<domain> pointing to a Tiny P/S SVG brand logo, and optionally include a VMC certificate."
+                }
+            ]
+        },
+        {
+            "subdomain": "launching.garudavigil.com",
+            "ip": "20.192.20.134",
+            "scan_timestamp": "2026-07-02T12:47:10Z",
+            "finding_count": 10,
+            "findings": [
+                {
+                    "title": "DNSSEC Not Deployed",
+                    "category": "DNS Security",
+                    "detail": "No DNSKEY or DS records present; resolvers cannot cryptographically verify the authenticity of DNS responses for this domain.",
+                    "evidence": "DNSKEY: absent | DS at parent zone: absent",
+                    "remediation": "Enable DNSSEC at your DNS provider and publish the resulting DS record at your domain registrar."
+                },
+                {
+                    "title": "No MX Records Found",
+                    "category": "Mail",
+                    "detail": "Domain has no MX records and is incapable of receiving inbound email.",
+                    "evidence": "MX query returned zero records",
+                    "remediation": "Add MX records pointing to your mail gateway if inbound email delivery is required for this domain."
+                },
+                {
+                    "title": "SPF Record Missing",
+                    "category": "Email Security",
+                    "detail": "No SPF policy was found on this subdomain or its organisational apex; email spoofing from this domain is unmitigated.",
+                    "evidence": "launching.garudavigil.com (absent), garudavigil.com (absent)",
+                    "remediation": "Publish a valid SPF TXT record at the apex domain enumerating all authorised sending sources."
+                },
+                {
+                    "title": "DMARC Record Missing",
+                    "category": "Email Security",
+                    "detail": "No DMARC policy was found on this subdomain or its apex; spoofing compliance enforcement and aggregate reporting are absent.",
+                    "evidence": "_dmarc.launching.garudavigil.com (absent), _dmarc.garudavigil.com (absent)",
+                    "remediation": "Publish a DMARC TXT record at _dmarc.<apex> with at minimum a monitoring policy (p=none) to begin collecting reports."
+                },
+                {
+                    "title": "DKIM Not Detected (Heuristic)",
+                    "category": "Email Security",
+                    "detail": "No DKIM selector TXT records were found across the standard set of common enterprise selectors for this subdomain.",
+                    "evidence": "Selectors probed: default, google, mail, dkim, k1, k2, smtp, email, mta, selector1, selector2, mandrill, sendgrid, mailchimp, amazonses",
+                    "remediation": "Configure DKIM signing on your mail platform and publish the public key as a TXT record at <selector>._domainkey.<domain>."
+                },
+                {
+                    "title": "MTA-STS Not Configured",
+                    "category": "Email Security",
+                    "detail": "No MTA-STS TXT record was found on this subdomain or its apex; opportunistic TLS for inbound SMTP is not enforced.",
+                    "evidence": "_mta-sts.launching.garudavigil.com (absent), _mta-sts.garudavigil.com (absent)",
+                    "remediation": "Publish an MTA-STS policy file at https://mta-sts.<apex>/.well-known/mta-sts.txt and reference it with a _mta-sts TXT record."
+                },
+                {
+                    "title": "TLS-RPT Not Configured",
+                    "category": "Email Security",
+                    "detail": "No SMTP TLS Reporting record was found on this subdomain or its apex; TLS delivery failures will remain unmonitored.",
+                    "evidence": "_smtp._tls.launching.garudavigil.com (absent), _smtp._tls.garudavigil.com (absent)",
+                    "remediation": "Publish a TLS-RPT TXT record at _smtp._tls.<domain> specifying a mailto: reporting destination."
+                },
+                {
+                    "title": "CAA Records Missing",
+                    "category": "PKI",
+                    "detail": "No CAA records restrict which Certificate Authorities may issue TLS certificates for this domain.",
+                    "evidence": "CAA record query returned no results",
+                    "remediation": "Add CAA records naming only your approved certificate authority partners to prevent unauthorised certificate issuance."
+                },
+                {
+                    "title": "TLSA / DANE Not Configured",
+                    "category": "PKI",
+                    "detail": "No TLSA record for port 443; DNS-Based Authentication of Named Entities (DANE) certificate pinning is not enforced for HTTPS.",
+                    "evidence": "No TLSA record at _443._tcp.launching.garudavigil.com",
+                    "remediation": "Publish a TLSA record to anchor your TLS certificate fingerprint in DNS via the DANE protocol."
+                },
+                {
+                    "title": "BIMI Not Configured",
+                    "category": "Brand Trust",
+                    "detail": "No BIMI record found; brand logo display in BIMI-capable mail clients is unavailable for this domain.",
+                    "evidence": "No matching TXT record at default._bimi.launching.garudavigil.com",
+                    "remediation": "Publish a BIMI TXT record at default._bimi.<domain> pointing to a Tiny P/S SVG brand logo, and optionally include a VMC certificate."
+                }
+            ]
+        },
+        {
+            "subdomain": "test.garudavigil.com",
+            "ip": "49.248.170.138",
+            "scan_timestamp": "2026-07-02T12:47:10Z",
+            "finding_count": 10,
+            "findings": [
+                {
+                    "title": "DNSSEC Not Deployed",
+                    "category": "DNS Security",
+                    "detail": "No DNSKEY or DS records present; resolvers cannot cryptographically verify the authenticity of DNS responses for this domain.",
+                    "evidence": "DNSKEY: absent | DS at parent zone: absent",
+                    "remediation": "Enable DNSSEC at your DNS provider and publish the resulting DS record at your domain registrar."
+                },
+                {
+                    "title": "No MX Records Found",
+                    "category": "Mail",
+                    "detail": "Domain has no MX records and is incapable of receiving inbound email.",
+                    "evidence": "MX query returned zero records",
+                    "remediation": "Add MX records pointing to your mail gateway if inbound email delivery is required for this domain."
+                },
+                {
+                    "title": "SPF Record Missing",
+                    "category": "Email Security",
+                    "detail": "No SPF policy was found on this subdomain or its organisational apex; email spoofing from this domain is unmitigated.",
+                    "evidence": "test.garudavigil.com (absent), garudavigil.com (absent)",
+                    "remediation": "Publish a valid SPF TXT record at the apex domain enumerating all authorised sending sources."
+                },
+                {
+                    "title": "DMARC Record Missing",
+                    "category": "Email Security",
+                    "detail": "No DMARC policy was found on this subdomain or its apex; spoofing compliance enforcement and aggregate reporting are absent.",
+                    "evidence": "_dmarc.test.garudavigil.com (absent), _dmarc.garudavigil.com (absent)",
+                    "remediation": "Publish a DMARC TXT record at _dmarc.<apex> with at minimum a monitoring policy (p=none) to begin collecting reports."
+                },
+                {
+                    "title": "DKIM Not Detected (Heuristic)",
+                    "category": "Email Security",
+                    "detail": "No DKIM selector TXT records were found across the standard set of common enterprise selectors for this subdomain.",
+                    "evidence": "Selectors probed: default, google, mail, dkim, k1, k2, smtp, email, mta, selector1, selector2, mandrill, sendgrid, mailchimp, amazonses",
+                    "remediation": "Configure DKIM signing on your mail platform and publish the public key as a TXT record at <selector>._domainkey.<domain>."
+                },
+                {
+                    "title": "MTA-STS Not Configured",
+                    "category": "Email Security",
+                    "detail": "No MTA-STS TXT record was found on this subdomain or its apex; opportunistic TLS for inbound SMTP is not enforced.",
+                    "evidence": "_mta-sts.test.garudavigil.com (absent), _mta-sts.garudavigil.com (absent)",
+                    "remediation": "Publish an MTA-STS policy file at https://mta-sts.<apex>/.well-known/mta-sts.txt and reference it with a _mta-sts TXT record."
+                },
+                {
+                    "title": "TLS-RPT Not Configured",
+                    "category": "Email Security",
+                    "detail": "No SMTP TLS Reporting record was found on this subdomain or its apex; TLS delivery failures will remain unmonitored.",
+                    "evidence": "_smtp._tls.test.garudavigil.com (absent), _smtp._tls.garudavigil.com (absent)",
+                    "remediation": "Publish a TLS-RPT TXT record at _smtp._tls.<domain> specifying a mailto: reporting destination."
+                },
+                {
+                    "title": "CAA Records Missing",
+                    "category": "PKI",
+                    "detail": "No CAA records restrict which Certificate Authorities may issue TLS certificates for this domain.",
+                    "evidence": "CAA record query returned no results",
+                    "remediation": "Add CAA records naming only your approved certificate authority partners to prevent unauthorised certificate issuance."
+                },
+                {
+                    "title": "TLSA / DANE Not Configured",
+                    "category": "PKI",
+                    "detail": "No TLSA record for port 443; DNS-Based Authentication of Named Entities (DANE) certificate pinning is not enforced for HTTPS.",
+                    "evidence": "No TLSA record at _443._tcp.test.garudavigil.com",
+                    "remediation": "Publish a TLSA record to anchor your TLS certificate fingerprint in DNS via the DANE protocol."
+                },
+                {
+                    "title": "BIMI Not Configured",
+                    "category": "Brand Trust",
+                    "detail": "No BIMI record found; brand logo display in BIMI-capable mail clients is unavailable for this domain.",
+                    "evidence": "No matching TXT record at default._bimi.test.garudavigil.com",
+                    "remediation": "Publish a BIMI TXT record at default._bimi.<domain> pointing to a Tiny P/S SVG brand logo, and optionally include a VMC certificate."
+                }
+            ]
+        }
+    ]
+}

@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 /* ---------------------------------------------------------------- */
 /* Icons & Constants                                                */
@@ -456,7 +458,32 @@ function DomainCard({ domain, project, username, refreshProjects }) {
                   <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-3">
                     Analyzed {reportData.files_analyzed.length} artifact{reportData.files_analyzed.length === 1 ? "" : "s"}: {reportData.files_analyzed.join(", ")}
                   </p>
-                  <pre className="text-sm text-gray-200 font-sans whitespace-pre-wrap leading-relaxed">{reportData.report}</pre>
+                  <div className="text-sm text-gray-200 leading-relaxed">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        h1: ({ node, ...p }) => <h1 className="text-lg font-bold text-white mt-4 mb-2 first:mt-0" {...p} />,
+                        h2: ({ node, ...p }) => <h2 className="text-base font-bold text-purple-300 mt-4 mb-2 first:mt-0" {...p} />,
+                        h3: ({ node, ...p }) => <h3 className="text-sm font-bold text-purple-200 mt-3 mb-1.5" {...p} />,
+                        p: ({ node, ...p2 }) => <p className="mb-3" {...p2} />,
+                        ul: ({ node, ...p }) => <ul className="list-disc list-outside pl-5 mb-3 space-y-1" {...p} />,
+                        ol: ({ node, ...p }) => <ol className="list-decimal list-outside pl-5 mb-3 space-y-1" {...p} />,
+                        li: ({ node, ...p }) => <li className="text-gray-200" {...p} />,
+                        strong: ({ node, ...p }) => <strong className="font-bold text-white" {...p} />,
+                        em: ({ node, ...p }) => <em className="italic text-gray-300" {...p} />,
+                        a: ({ node, ...p }) => <a className="text-purple-400 underline hover:text-purple-300" target="_blank" rel="noreferrer" {...p} />,
+                        code: ({ node, ...p }) => <code className="bg-white/10 text-purple-200 rounded px-1 py-0.5 font-mono text-xs" {...p} />,
+                        pre: ({ node, ...p }) => <pre className="bg-black/60 border border-white/10 rounded-lg p-3 font-mono text-xs overflow-x-auto my-2 [&>code]:bg-transparent [&>code]:text-gray-200 [&>code]:p-0 [&>code]:rounded-none" {...p} />,
+                        blockquote: ({ node, ...p }) => <blockquote className="border-l-2 border-purple-500/50 pl-3 italic text-gray-400 my-2" {...p} />,
+                        hr: () => <hr className="border-white/10 my-4" />,
+                        table: ({ node, ...p }) => <div className="overflow-x-auto my-3"><table className="min-w-full text-xs border border-white/10" {...p} /></div>,
+                        th: ({ node, ...p }) => <th className="border border-white/10 bg-white/5 px-2 py-1 text-left font-semibold text-gray-300" {...p} />,
+                        td: ({ node, ...p }) => <td className="border border-white/10 px-2 py-1" {...p} />,
+                      }}
+                    >
+                      {reportData.report}
+                    </ReactMarkdown>
+                  </div>
                 </>
               )}
             </div>
