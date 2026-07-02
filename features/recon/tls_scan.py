@@ -124,6 +124,26 @@ def resolve_host(host: str) -> str:
 def is_ip_address(host: str) -> bool:
     return bool(re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", host))
 
+def _json_safe(obj: Any) -> Any:
+    """
+    Recursively normalize a dataclasses.asdict() tree into pure JSON
+    primitives. The only non-native type this codebase actually produces
+    is datetime (cert_valid_from/cert_valid_to); tuples are flattened to
+    lists for a stable JSON shape. Anything else is unexpected -- raise
+    instead of stringifying, so a leaked non-primitive (e.g. a
+    cryptography/x509 object) surfaces as a caught error for that one
+    target rather than silently corrupting the report.
+    """
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    raise TypeError(f"_json_safe: unexpected type {type(obj).__name__} in scan result tree")
+
 def _make_ctx(
     min_ver: Optional[ssl.TLSVersion] = None,
     max_ver: Optional[ssl.TLSVersion] = None,
@@ -516,7 +536,11 @@ def scan_tls(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
     for target in targets:
         try:
             res_obj = run_scan(target, port, timeout, skip_ciphers=skip_ciphers)
-            scan_results[target] = dataclasses.asdict(res_obj)
+            # asdict() keeps datetime objects as-is (cert_valid_from/cert_valid_to);
+            # normalize the whole tree to JSON-safe primitives here, at the source,
+            # so scan_tls() never hands a caller data that json.dump can't encode --
+            # regardless of whether that caller remembers to pass default=str.
+            scan_results[target] = _json_safe(dataclasses.asdict(res_obj))
         except Exception as exc:
             scan_results[target] = {
                 "host": target,
