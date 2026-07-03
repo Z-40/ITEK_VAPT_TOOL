@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
+import datetime
 import shutil
 import json
 import os
@@ -95,13 +96,28 @@ class ProjectAdd(BaseModel): name: str
 # ---------------------------------------------------------------- #
 # BACKGROUND TASK (Filesystem Lock Engine)
 # ---------------------------------------------------------------- #
+def _json_default(o):
+    """Fallback encoder for json.dump. Handles datetime objects (e.g. TLS cert
+    validity dates from tls_scan) and anything else json can't natively encode,
+    instead of letting json.dump raise TypeError mid-write."""
+    if isinstance(o, (datetime.datetime, datetime.date)):
+        return o.isoformat()
+    return str(o)
+
 def _safe_write_json(path: Path, data) -> bool:
     """Writes JSON only when there's meaningful content. Never leaves an empty file
-    behind (no file at all is written if data is None/empty dict/list/string)."""
+    behind (no file at all is written if data is None/empty dict/list/string).
+
+    Writes to a temp file and atomically renames it into place, so a
+    serialization failure partway through (e.g. an unexpected non-JSON-safe
+    type) can never leave a truncated/corrupt .json file on disk -- the temp
+    file is simply abandoned and the exception propagates to the caller."""
     if data is None: return False
     if isinstance(data, (dict, list, str)) and len(data) == 0: return False
-    with open(path, "w") as f:
-        json.dump(data, f, indent=4)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w") as f:
+        json.dump(data, f, indent=4, default=_json_default)
+    tmp_path.replace(path)  # atomic on POSIX and Windows
     return True
 
 def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
