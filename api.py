@@ -84,6 +84,11 @@ except ImportError:
         return {"status": "mock", "total_post_routes_found": 0,
                 "output_directory": input_json_data.get("output_dir", ""), "generated_files": []}
 
+try: from features.sqli.sqli import run_sqli
+except ImportError:
+    def run_sqli(req_dir, out_dir):
+        return []
+
 
 app = FastAPI(title="ITEK VAPT Orchestrator (Pure Filesystem Mode)", version="4.0")
 
@@ -103,6 +108,12 @@ OPENAPI_DIR_NAME = "openapi_spec"
 # never listed in /vault or shown in the UI -- and it's derived from the spec, so
 # it's cleared whenever the spec is deleted/replaced and regenerated on every run.
 POST_REQUESTS_DIR_NAME = "post_requests"
+
+# sqlmap results, one JSON file per POST request tested. Unlike post_requests,
+# this IS a real scan artifact -- it's left out of every hidden/exclusion list
+# on purpose so it shows up in /vault and gets fed into the AI report like any
+# other scan output.
+SQLI_RESULTS_DIR_NAME = "sqli_results"
 
 def _find_openapi_spec_file(domain_dir: Path):
     """Returns the Path of the currently uploaded OpenAPI/Swagger spec for this
@@ -203,6 +214,26 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
                 module_status["post_requests"] = "success" if found else "empty"
             except Exception as step_error:
                 module_status["post_requests"] = f"failed: {step_error}"
+
+        # --- SQLi testing (sqlmap): must run only after get_post_requests, and only
+        # when a swagger/OpenAPI spec exists, since sqlmap needs the .txt POST
+        # request files get_post_requests derives from that spec. req_dir is exactly
+        # that post_requests output directory; each request file gets its own JSON
+        # result written into a real (non-hidden) vault artifact directory.
+        if spec_file is None:
+            module_status["sqli"] = "skipped: no openapi/swagger spec uploaded"
+        elif module_status["post_requests"] != "success":
+            # Covers both "empty" (spec had no POST routes) and "failed" (post_requests
+            # blew up) -- either way there's no req_dir worth pointing sqlmap at.
+            module_status["sqli"] = "skipped: no POST request files to test"
+        else:
+            sqli_out_dir = domain_dir / SQLI_RESULTS_DIR_NAME
+            try:
+                if sqli_out_dir.exists(): shutil.rmtree(sqli_out_dir, ignore_errors=True)
+                result_paths = run_sqli(str(post_requests_dir), str(sqli_out_dir))
+                module_status["sqli"] = "success" if result_paths else "empty"
+            except Exception as step_error:
+                module_status["sqli"] = f"failed: {step_error}"
 
         has_failures = any(str(v).startswith("failed") for v in module_status.values())
         _safe_write_json(domain_dir / "findings_report.json", {
