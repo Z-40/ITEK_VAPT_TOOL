@@ -86,7 +86,7 @@ except ImportError:
 
 try: from features.sqli.sqli import run_sqli
 except ImportError:
-    def run_sqli(req_dir, out_dir):
+    def run_sqli(req_dir, out_dir, filename_prefix=""):
         return []
 
 
@@ -109,11 +109,12 @@ OPENAPI_DIR_NAME = "openapi_spec"
 # it's cleared whenever the spec is deleted/replaced and regenerated on every run.
 POST_REQUESTS_DIR_NAME = "post_requests"
 
-# sqlmap results, one JSON file per POST request tested. Unlike post_requests,
-# this IS a real scan artifact -- it's left out of every hidden/exclusion list
-# on purpose so it shows up in /vault and gets fed into the AI report like any
-# other scan output.
-SQLI_RESULTS_DIR_NAME = "sqli_results"
+# sqlmap results, one JSON file per POST request tested, written flat into
+# domain_dir alongside the other scan artifacts (no dedicated subfolder) so
+# they show up in /vault and the AI report exactly like dns_scan.json etc.
+# Filenames are prefixed so a POST-route file that happens to share a name
+# with an existing artifact (e.g. "port_scan") can't silently clobber it.
+SQLI_RESULT_PREFIX = "sqli_"
 
 def _find_openapi_spec_file(domain_dir: Path):
     """Returns the Path of the currently uploaded OpenAPI/Swagger spec for this
@@ -218,8 +219,10 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
         # --- SQLi testing (sqlmap): must run only after get_post_requests, and only
         # when a swagger/OpenAPI spec exists, since sqlmap needs the .txt POST
         # request files get_post_requests derives from that spec. req_dir is exactly
-        # that post_requests output directory; each request file gets its own JSON
-        # result written into a real (non-hidden) vault artifact directory.
+        # that post_requests output directory. Results are written flat into
+        # domain_dir (no subfolder) -- the top-of-function cleanup loop above
+        # already wipes stale top-level files every run, so no extra cleanup is
+        # needed here the way post_requests_dir needs its own rmtree.
         if spec_file is None:
             module_status["sqli"] = "skipped: no openapi/swagger spec uploaded"
         elif module_status["post_requests"] != "success":
@@ -227,10 +230,8 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
             # blew up) -- either way there's no req_dir worth pointing sqlmap at.
             module_status["sqli"] = "skipped: no POST request files to test"
         else:
-            sqli_out_dir = domain_dir / SQLI_RESULTS_DIR_NAME
             try:
-                if sqli_out_dir.exists(): shutil.rmtree(sqli_out_dir, ignore_errors=True)
-                result_paths = run_sqli(str(post_requests_dir), str(sqli_out_dir))
+                result_paths = run_sqli(str(post_requests_dir), str(domain_dir), filename_prefix=SQLI_RESULT_PREFIX)
                 module_status["sqli"] = "success" if result_paths else "empty"
             except Exception as step_error:
                 module_status["sqli"] = f"failed: {step_error}"

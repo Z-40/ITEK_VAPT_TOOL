@@ -1,10 +1,25 @@
 import os
 import json
+import re
 import time
 import datetime
 import subprocess
 
 SQLMAP_PATH = "sqlmap"
+
+# sqlmap's real log entries all look like "[14:51:10] [INFO] ..." /
+# "[14:51:10] [CRITICAL] ...". Everything else in stdout -- the ASCII art
+# banner, the legal disclaimer, the "[*] starting @ ..." line, blank padding
+# -- doesn't match this and gets dropped.
+_LOG_LINE_RE = re.compile(r"^\[\d{2}:\d{2}:\d{2}\]")
+
+
+def _extract_log_lines(text):
+    """Strip banner artwork/disclaimer noise from raw sqlmap stdout, keeping
+    only the actual timestamped log lines."""
+    if not text:
+        return text
+    return "\n".join(line for line in text.splitlines() if _LOG_LINE_RE.match(line))
 
 
 def _unique_output_path(out_dir, stem):
@@ -20,10 +35,11 @@ def _unique_output_path(out_dir, stem):
         counter += 1
 
 
-def run_sqli(req_dir, out_dir):
+def run_sqli(req_dir, out_dir, filename_prefix=""):
     """
     Run sqlmap against every .txt request file in req_dir.
-    Each result is saved as its own JSON file in out_dir.
+    Each result is saved as its own JSON file in out_dir, named
+    "{filename_prefix}{request_file_stem}.json".
 
     Returns a list of the JSON file paths that were written.
     """
@@ -42,7 +58,7 @@ def run_sqli(req_dir, out_dir):
 
     for file_name in files:
         file_path = os.path.join(req_dir, file_name)
-        stem = os.path.splitext(file_name)[0]
+        stem = f"{filename_prefix}{os.path.splitext(file_name)[0]}"
         command = [SQLMAP_PATH, "-r", file_path, "--batch"]
 
         record = {
@@ -65,7 +81,7 @@ def run_sqli(req_dir, out_dir):
             record.update({
                 "status": "success" if proc.returncode == 0 else "failed",
                 "return_code": proc.returncode,
-                "stdout": proc.stdout,
+                "stdout": _extract_log_lines(proc.stdout),
                 "stderr": proc.stderr,
             })
             icon = "✅" if proc.returncode == 0 else "⚠️"
