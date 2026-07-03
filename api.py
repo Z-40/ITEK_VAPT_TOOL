@@ -9,6 +9,9 @@ import datetime
 import shutil
 import json
 import os
+import smtplib
+import ssl
+from email.mime.text import MIMEText
 import db
 try:
     import httpx
@@ -96,8 +99,63 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
 
+@app.on_event("startup")
+async def _run_startup_migrations():
+    db.ensure_schema()
+
 STORAGE_DIR = Path("vault_storage")
 STORAGE_DIR.mkdir(exist_ok=True)
+
+# ---------------------------------------------------------------- #
+# EMAIL VERIFICATION (SMTP)
+# ---------------------------------------------------------------- #
+# Works with any SMTP provider (Gmail app password, SendGrid, Mailgun, SES
+# SMTP, your own mail server, etc.) -- just point these env vars at it.
+# If SMTP_HOST is unset (e.g. local dev), the verification link is printed
+# to the console instead of emailed, so signup still works end to end.
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER or "no-reply@itek.local")
+# Where the frontend is served -- the verification link points here, not at
+# this API, since it's the React app that reads ?token= and calls /verify-email.
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:5173")
+
+def send_verification_email(to_email: str, token: str):
+    link = f"{APP_BASE_URL}/verify?token={token}"
+    subject = "Verify your ITEK account"
+    body = (
+        "Welcome to ITEK.\n\n"
+        "Confirm your email address to activate your account:\n"
+        f"{link}\n\n"
+        "This link expires in 24 hours. If you didn't create this account, "
+        "you can ignore this email."
+    )
+
+    if not SMTP_HOST:
+        # Dev fallback: no mail server configured, so surface the link in the
+        # server logs instead of silently dropping it.
+        print(f"[dev] SMTP not configured -- verification link for {to_email}: {link}")
+        return
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = SMTP_FROM
+    msg["To"] = to_email
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls(context=context)
+            if SMTP_USER:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_FROM, [to_email], msg.as_string())
+    except Exception as e:
+        # Signup shouldn't hard-fail just because the mail server hiccuped --
+        # the user can always hit /resend-verification -- but this needs to
+        # be visible somewhere since it means the user got no email at all.
+        print(f"[warn] failed to send verification email to {to_email}: {e}")
 
 # OpenAPI/Swagger specs live in their own subdirectory under each domain dir,
 # separate from scan artifacts, so they can be preserved across pipeline
@@ -129,6 +187,7 @@ class UserSignup(BaseModel): email: str; username: str; password: str
 class UserLogin(BaseModel): email: str; password: str
 class DomainAdd(BaseModel): domain: str
 class ProjectAdd(BaseModel): name: str
+class ResendVerification(BaseModel): email: str
 
 # ---------------------------------------------------------------- #
 # BACKGROUND TASK (Filesystem Lock Engine)
@@ -254,17 +313,40 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
 @app.post("/signup")
 async def get_signup(credentials: UserSignup):
     username_clean = credentials.username.strip().lower()
+    email_clean = credentials.email.strip()
     try:
-        db.create_user(credentials.email.strip(), username_clean, credentials.password)
+        token = db.create_user(email_clean, username_clean, credentials.password)
         (STORAGE_DIR / username_clean / "default-workspace").mkdir(parents=True, exist_ok=True)
     except ValueError as e: raise HTTPException(status_code=400, detail=str(e))
-    return {"message": "Success"}
+    send_verification_email(email_clean, token)
+    return {"message": "Account created. Check your email to verify your address before logging in."}
 
 @app.post("/login")
 async def get_login(credentials: UserLogin):
     user = db.authenticate_user(credentials.email.strip(), credentials.password)
     if not user: raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user["email_verified"]:
+        raise HTTPException(status_code=403, detail="Email not verified. Check your inbox, or request a new verification link.")
     return {"message": "Success", "username": user["username"]}
+
+@app.get("/verify-email")
+async def verify_email(token: str):
+    result = db.verify_email_token(token)
+    if result == "invalid":
+        raise HTTPException(status_code=400, detail="Invalid or already-used verification link.")
+    if result == "expired":
+        raise HTTPException(status_code=400, detail="This verification link has expired. Request a new one.")
+    return {"message": "Email verified. You can now log in."}
+
+@app.post("/resend-verification")
+async def resend_verification(payload: ResendVerification):
+    email_clean = payload.email.strip()
+    token = db.regenerate_verification_token(email_clean)
+    if token:
+        send_verification_email(email_clean, token)
+    # Same response whether or not the account exists/is already verified,
+    # so this endpoint can't be used to enumerate registered emails.
+    return {"message": "If that account needs verification, a new link has been sent."}
 
 @app.get("/{username}")
 async def get_user_profile(username: str):

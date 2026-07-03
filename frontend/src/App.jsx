@@ -93,9 +93,14 @@ function AuthPage({ view, setView, onLoginSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [signupDone, setSignupDone] = useState(false);
+  const [resendStatus, setResendStatus] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(null);
+    setNeedsVerification(false);
     try {
       const endpoint = view === "login" ? "/login" : "/signup";
       const payload = view === "login" ? { email, password } : { email, username, password };
@@ -103,10 +108,37 @@ function AuthPage({ view, setView, onLoginSuccess }) {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail);
-      if (view === "login") onLoginSuccess(data.username); else setView("login");
+      if (!res.ok) {
+        // 403 on /login means the account exists but the email hasn't been
+        // verified yet -- offer a resend instead of just showing an error.
+        if (view === "login" && res.status === 403) setNeedsVerification(true);
+        throw new Error(data.detail);
+      }
+      if (view === "login") onLoginSuccess(data.username); else setSignupDone(true);
     } catch (err) { setError(err.message); }
   };
+
+  const handleResend = async () => {
+    setResendStatus("sending");
+    try {
+      await fetch(`http://127.0.0.1:8000/resend-verification`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
+      });
+      setResendStatus("sent");
+    } catch { setResendStatus("error"); }
+  };
+
+  if (signupDone) {
+    return (
+      <section className="flex min-h-screen items-center justify-center px-6">
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-8 text-center">
+          <h2 className="text-lg font-semibold text-white mb-2">Check your email</h2>
+          <p className="text-sm text-gray-400 mb-6">We sent a verification link to <span className="text-gray-200">{email}</span>. Click it to activate your account, then log in.</p>
+          <button onClick={() => setView("login")} className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">GO TO LOGIN</button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="flex min-h-screen items-center justify-center px-6">
@@ -117,7 +149,56 @@ function AuthPage({ view, setView, onLoginSuccess }) {
           <input type="email" placeholder="Email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-black border border-white/20 text-white rounded" />
           <input type="password" placeholder="Password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-black border border-white/20 text-white rounded" />
           <button type="submit" className="w-full bg-emerald-400 text-black font-bold p-3 rounded">{view.toUpperCase()}</button>
+          {needsVerification && (
+            <div className="text-center">
+              {resendStatus === "sent" ? (
+                <p className="text-xs text-emerald-400">New verification link sent — check your inbox.</p>
+              ) : (
+                <button type="button" onClick={handleResend} disabled={resendStatus === "sending"} className="text-xs text-cyan-400 hover:underline bg-transparent border-none cursor-pointer">
+                  {resendStatus === "sending" ? "Sending…" : "Resend verification email"}
+                </button>
+              )}
+            </div>
+          )}
         </form>
+      </div>
+    </section>
+  );
+}
+
+function VerifyEmailPage({ token, setView }) {
+  const [status, setStatus] = useState("checking"); // checking | ok | error
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!token) { setStatus("error"); setMessage("No verification token provided."); return; }
+    fetch(`http://127.0.0.1:8000/verify-email?token=${encodeURIComponent(token)}`)
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail);
+        setStatus("ok"); setMessage(data.message);
+      })
+      .catch(err => { setStatus("error"); setMessage(err.message); });
+  }, [token]);
+
+  return (
+    <section className="flex min-h-screen items-center justify-center px-6">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-8 text-center">
+        {status === "checking" && <p className="text-sm text-gray-400">Verifying your email…</p>}
+        {status === "ok" && (
+          <>
+            <h2 className="text-lg font-semibold text-emerald-400 mb-2">Email verified</h2>
+            <p className="text-sm text-gray-400 mb-6">{message}</p>
+            <button onClick={() => setView("login")} className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">GO TO LOGIN</button>
+          </>
+        )}
+        {status === "error" && (
+          <>
+            <h2 className="text-lg font-semibold text-red-400 mb-2">Verification failed</h2>
+            <p className="text-sm text-gray-400 mb-6">{message}</p>
+            <button onClick={() => setView("login")} className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">GO TO LOGIN</button>
+          </>
+        )}
       </div>
     </section>
   );
@@ -572,17 +653,32 @@ function DomainCard({ domain, project, username, refreshProjects }) {
 }
 
 export default function App() {
+  // A verification email link lands here as /?token=... (see APP_BASE_URL in
+  // api.py) -- if one's present, that takes priority over whatever else
+  // localStorage says about the session.
+  const verifyToken = new URLSearchParams(window.location.search).get("token");
+
   const [activeUser, setActiveUser] = useState(() => localStorage.getItem("itek_user") || null);
-  const [view, setView] = useState(() => localStorage.getItem("itek_user") ? "dashboard" : "landing");
+  const [view, setView] = useState(() => verifyToken ? "verify" : localStorage.getItem("itek_user") ? "dashboard" : "landing");
 
   const navigateTo = (targetView) => setView(targetView);
   const handleLoginSuccess = (user) => { localStorage.setItem("itek_user", user); setActiveUser(user); navigateTo("dashboard"); };
   const handleLogout = () => { localStorage.removeItem("itek_user"); setActiveUser(null); navigateTo("landing"); };
 
+  const showDashboard = activeUser && view !== "verify";
+
   return (
     <div className="min-h-screen bg-black font-sans text-gray-100 antialiased">
-      <Navbar setView={navigateTo} view={activeUser ? "dashboard" : view} />
-      {activeUser ? <DashboardView username={activeUser} onLogout={handleLogout} /> : view === "landing" ? <><Hero setView={navigateTo} /><Capabilities /><TerminalDemo /></> : <AuthPage view={view} setView={navigateTo} onLoginSuccess={handleLoginSuccess} />}
+      <Navbar setView={navigateTo} view={showDashboard ? "dashboard" : view} />
+      {view === "verify" ? (
+        <VerifyEmailPage token={verifyToken} setView={navigateTo} />
+      ) : showDashboard ? (
+        <DashboardView username={activeUser} onLogout={handleLogout} />
+      ) : view === "landing" ? (
+        <><Hero setView={navigateTo} /><Capabilities /><TerminalDemo /></>
+      ) : (
+        <AuthPage view={view} setView={navigateTo} onLoginSuccess={handleLoginSuccess} />
+      )}
     </div>
   );
 }
