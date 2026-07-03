@@ -88,6 +88,11 @@ app.add_middleware(
 STORAGE_DIR = Path("vault_storage")
 STORAGE_DIR.mkdir(exist_ok=True)
 
+# OpenAPI/Swagger specs live in their own subdirectory under each domain dir,
+# separate from scan artifacts, so they can be preserved across pipeline
+# re-runs and deleted independently of the domain (see /vault/openapi* routes).
+OPENAPI_DIR_NAME = "openapi_spec"
+
 class UserSignup(BaseModel): email: str; username: str; password: str
 class UserLogin(BaseModel): email: str; password: str
 class DomainAdd(BaseModel): domain: str
@@ -132,7 +137,7 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
         # Clear historical run results so this run fully replaces the last one
         # (keep the lock and spec uploads)
         for item in domain_dir.iterdir():
-            if item.name in [".lock-pipeline", "openapi_spec.json"]: continue
+            if item.name in (".lock-pipeline", OPENAPI_DIR_NAME): continue
             if item.is_file(): item.unlink()
             elif item.is_dir(): shutil.rmtree(item, ignore_errors=True)
 
@@ -367,7 +372,12 @@ async def get_vault_files(username: str, project: str, domain: str):
     domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
     files = []
     if domain_dir.exists():
-        for root, _, filenames in os.walk(domain_dir):
+        for root, dirnames, filenames in os.walk(domain_dir):
+            # Keep the OpenAPI/Swagger spec out of the general artifact list -- it
+            # has its own dedicated section/endpoints in the UI, so it shouldn't
+            # show up (or be deletable) as a regular scan artifact here.
+            if Path(root) == domain_dir and OPENAPI_DIR_NAME in dirnames:
+                dirnames.remove(OPENAPI_DIR_NAME)
             for fname in filenames:
                 if fname.startswith("."): continue # Skip lock files
                 full_path = Path(root) / fname
@@ -393,3 +403,49 @@ async def delete_file(username: str, project: str, domain: str, filepath: str):
     target = STORAGE_DIR / username.lower() / project.lower() / domain.lower() / filepath
     if target.exists(): target.unlink()
     return {"message": "Deleted"}
+
+# ---------------------------------------------------------------- #
+# OPENAPI / SWAGGER SPEC (dedicated storage, separate from scan artifacts)
+# ---------------------------------------------------------------- #
+@app.get("/{username}/{project}/{domain}/vault/openapi")
+async def get_openapi_spec(username: str, project: str, domain: str):
+    """Returns info about the currently stored spec (or null if none)."""
+    domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
+    openapi_dir = domain_dir / OPENAPI_DIR_NAME
+    if openapi_dir.exists():
+        for f in sorted(openapi_dir.iterdir()):
+            if f.is_file():
+                return {"file": {"name": f.name, "size": f"{f.stat().st_size} bytes"}}
+    return {"file": None}
+
+@app.post("/{username}/{project}/{domain}/vault/openapi/upload")
+async def upload_openapi_spec(username: str, project: str, domain: str, file: UploadFile = File(...)):
+    domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
+    domain_dir.mkdir(parents=True, exist_ok=True)
+    openapi_dir = domain_dir / OPENAPI_DIR_NAME
+    # Wipe any previous spec first so re-uploading always fully replaces it --
+    # even if the new file has a different name/extension than the old one --
+    # instead of accumulating multiple spec files side by side.
+    if openapi_dir.exists(): shutil.rmtree(openapi_dir, ignore_errors=True)
+    openapi_dir.mkdir(parents=True, exist_ok=True)
+    with open(openapi_dir / file.filename, "wb") as f: shutil.copyfileobj(file.file, f)
+    return {"message": "OpenAPI spec uploaded"}
+
+@app.get("/{username}/{project}/{domain}/vault/openapi/view")
+async def view_openapi_spec(username: str, project: str, domain: str):
+    domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
+    openapi_dir = domain_dir / OPENAPI_DIR_NAME
+    if openapi_dir.exists():
+        for f in sorted(openapi_dir.iterdir()):
+            if f.is_file():
+                with open(f, "r", errors="ignore") as fh: return {"name": f.name, "content": fh.read()}
+    raise HTTPException(status_code=404, detail="No OpenAPI spec uploaded for this domain.")
+
+@app.delete("/{username}/{project}/{domain}/vault/openapi")
+async def delete_openapi_spec(username: str, project: str, domain: str):
+    """Deletes just the OpenAPI spec, independent of the domain or any other
+    vault artifact. The domain and its other artifacts are untouched."""
+    domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
+    openapi_dir = domain_dir / OPENAPI_DIR_NAME
+    if openapi_dir.exists(): shutil.rmtree(openapi_dir, ignore_errors=True)
+    return {"message": "OpenAPI spec deleted"}

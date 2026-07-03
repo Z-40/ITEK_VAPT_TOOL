@@ -194,7 +194,7 @@ def build_request_block(path: str, op: dict, spec: dict, host: str, base_path: s
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN SYNCHRONOUS IN-MEMORY INTERFACE WITH DISK WRITE CAPABILITY
 # ─────────────────────────────────────────────────────────────────────────────
-def run(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
+def get_post_requests(input_json_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Accepts a structured payload dictionary containing an OpenAPI specification and 
     a target output directory path. Generates raw HTTP/1.1 POST blocks and exports 

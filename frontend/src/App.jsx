@@ -265,7 +265,9 @@ function DomainCard({ domain, project, username, refreshProjects }) {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportData, setReportData] = useState(null); // { report, files_analyzed }
   const [reportError, setReportError] = useState(null);
+  const [openApiSpec, setOpenApiSpec] = useState(null); // { name, size } | null
   const fileInputRef = useRef();
+  const openApiInputRef = useRef();
   const pollRef = useRef(null);
 
   const loadVault = () => {
@@ -276,6 +278,12 @@ function DomainCard({ domain, project, username, refreshProjects }) {
         setFiles(fetchedFiles);
         return fetchedFiles;
       });
+  };
+
+  const loadOpenApiSpec = () => {
+    return fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/openapi`)
+      .then(res => res.json())
+      .then(data => setOpenApiSpec(data.file || null));
   };
 
   const checkStatus = async () => {
@@ -292,6 +300,7 @@ function DomainCard({ domain, project, username, refreshProjects }) {
   useEffect(() => {
     let cancelled = false;
     loadVault();
+    loadOpenApiSpec();
     // On mount (including after a page refresh) ask the backend for ground truth —
     // if a pipeline is already running for this domain, resume showing it as running
     // and start polling, instead of defaulting to "idle" just because local state reset.
@@ -359,6 +368,30 @@ function DomainCard({ domain, project, username, refreshProjects }) {
     loadVault();
   };
 
+  const handleOpenApiUpload = async (e) => {
+    if (!e.target.files[0]) return;
+    const formData = new FormData();
+    formData.append("file", e.target.files[0]);
+    // Backend wipes any previous spec first, so this always fully replaces it.
+    await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/openapi/upload`, { method: "POST", body: formData });
+    e.target.value = ""; // allow re-selecting the same filename again later
+    loadOpenApiSpec();
+  };
+
+  const handleViewOpenApiSpec = async () => {
+    const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/openapi/view`);
+    if (res.ok) {
+      const data = await res.json();
+      setViewFile({ name: data.name, content: data.content });
+    } else alert("Cannot read this file type as text.");
+  };
+
+  const handleDeleteOpenApiSpec = async () => {
+    // Deletes just the spec — the domain and its other vault artifacts are untouched.
+    await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/openapi`, { method: "DELETE" });
+    loadOpenApiSpec();
+  };
+
   const handleView = async (filepath) => {
     const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/view/${filepath}`);
     if (res.ok) {
@@ -404,6 +437,35 @@ function DomainCard({ domain, project, username, refreshProjects }) {
       </div>
       
       <div className="text-sm">
+        {/* OpenAPI / Swagger spec — stored in its own directory, separate from scan
+            artifacts. Survives pipeline re-runs and is only removed when the domain
+            itself is deleted, unless the user deletes it explicitly below. */}
+        <div className="mb-4 pb-4 border-b border-white/5">
+          <div className="flex justify-between items-center mb-2">
+            <p className="uppercase tracking-wider text-xs text-gray-500 font-bold">OpenAPI / Swagger Spec</p>
+            <div>
+              <input type="file" ref={openApiInputRef} onChange={handleOpenApiUpload} className="hidden" />
+              <button onClick={() => openApiInputRef.current.click()} className="text-xs text-blue-400 border border-blue-400/30 px-2 py-1 rounded hover:bg-blue-400/10 cursor-pointer bg-transparent">
+                {openApiSpec ? "↻ Replace Spec" : "+ Upload Spec"}
+              </button>
+            </div>
+          </div>
+
+          {openApiSpec ? (
+            <div className="flex justify-between items-center bg-zinc-900/50 px-3 py-2 rounded border border-white/5">
+              <span className="font-mono text-xs text-gray-300">
+                {openApiSpec.name} <span className="text-gray-600">({openApiSpec.size})</span>
+              </span>
+              <div className="flex gap-3 text-xs">
+                <button onClick={handleViewOpenApiSpec} className="text-cyan-400 hover:underline cursor-pointer bg-transparent border-none p-0">View</button>
+                <button onClick={handleDeleteOpenApiSpec} className="text-red-400 hover:underline cursor-pointer bg-transparent border-none p-0">Delete</button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600 italic">No spec uploaded. It's stored separately and won't be cleared by pipeline re-runs.</p>
+          )}
+        </div>
+
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
             <p className="uppercase tracking-wider text-xs text-gray-500 font-bold">Vault Artifacts</p>
@@ -416,7 +478,7 @@ function DomainCard({ domain, project, username, refreshProjects }) {
           </div>
           <div>
             <input type="file" ref={fileInputRef} onChange={handleUpload} className="hidden" />
-            <button onClick={() => fileInputRef.current.click()} className="text-xs text-blue-400 border border-blue-400/30 px-2 py-1 rounded hover:bg-blue-400/10 cursor-pointer bg-transparent">+ Upload Spec (openapi_spec.json)</button>
+            <button onClick={() => fileInputRef.current.click()} className="text-xs text-blue-400 border border-blue-400/30 px-2 py-1 rounded hover:bg-blue-400/10 cursor-pointer bg-transparent">+ Upload File</button>
           </div>
         </div>
 
