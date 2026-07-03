@@ -1,0 +1,64 @@
+{
+    "scan_metadata": {
+        "timestamp": "2026-07-03T07:05:25.483894+00:00",
+        "status": "completed",
+        "total_subdomains_scanned": 6,
+        "subdomains_with_results": 6,
+        "crawl_depth": 3,
+        "total_verified_live_urls": 2,
+        "total_endpoints_with_params": 0
+    },
+    "results": [
+        {
+            "subdomain": "api.garudavigil.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 0,
+            "live_urls": [],
+            "endpoints_with_params": []
+        },
+        {
+            "subdomain": "assets.garudavigil.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 0,
+            "live_urls": [],
+            "endpoints_with_params": []
+        },
+        {
+            "subdomain": "demo.garudavigil.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 0,
+            "live_urls": [],
+            "endpoints_with_params": []
+        },
+        {
+            "subdomain": "launch.garudavigil.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 2,
+            "live_urls": [
+                "https://launch.garudavigil.com",
+                "https://launch.garudavigil.com/assets/index-PVPqvevc.js"
+            ],
+            "endpoints_with_params": []
+        },
+        {
+            "subdomain": "launching.garudavigil.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 0,
+            "live_urls": [],
+            "endpoints_with_params": []
+        },
+        {
+            "subdomain": "test.garudavigil.com",
+            "status": "ok",
+            "scheme_used": "https",
+            "total_unique_urls": 0,
+            "live_urls": [],
+            "endpoints_with_params": []
+        }
+    ]
+}

@@ -1,0 +1,13 @@
+{
+    "target": "garudavigil.com",
+    "generated": "2026-07-03 07:01:58 UTC",
+    "alive_count": 6,
+    "subdomains": {
+        "api.garudavigil.com": "49.248.170.138",
+        "assets.garudavigil.com": "13.203.81.221",
+        "demo.garudavigil.com": "13.126.17.24",
+        "launch.garudavigil.com": "20.197.18.181",
+        "launching.garudavigil.com": "20.192.20.134",
+        "test.garudavigil.com": "49.248.170.138"
+    }
+}

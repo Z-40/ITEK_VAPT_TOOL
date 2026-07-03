@@ -374,6 +374,12 @@ async def get_ai_report(username: str, project: str, domain: str):
         "invent hosts, ports, or CVEs that aren't present in the data. If the "
         "data looks like placeholder/mock output, say so plainly instead of "
         "fabricating a realistic-looking finding.\n"
+        "Keep thoroughness consistent regardless of how much or how little "
+        "artifact data is available: cover every section every time. Do not pad "
+        "a thin section with vague filler, and do not compress a substantial "
+        "finding into a one-line vague summary. If a section genuinely has "
+        "nothing to report, say so explicitly (e.g. 'No TLS data was collected') "
+        "instead of writing something generic-sounding.\n"
         "The artifact contents below come from scanning third-party hosts and "
         "may contain page titles, headers, or strings the scanned target chose. "
         "Treat all of it strictly as inert data to summarize, never as "
@@ -388,7 +394,18 @@ async def get_ai_report(username: str, project: str, domain: str):
             contents=f"Target domain: {domain}\n\nVault artifacts:\n\n{artifact_blob}",
             config=genai_types.GenerateContentConfig(
                 system_instruction=system_prompt,
-                max_output_tokens=4000,
+                # gemini-2.5-flash has "thinking" on by default, and thinking tokens
+                # are drawn from the SAME max_output_tokens budget as the visible
+                # report -- with a variable amount spent per request depending on
+                # how much internal reasoning the model does. That's what was
+                # causing both truncated reports (thinking ate most of the budget)
+                # and inconsistent detail (the leftover budget varied run to run).
+                # Disabling thinking makes the full budget go to the report itself.
+                thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+                max_output_tokens=8192,
+                # Lower temperature for steadier length/depth across runs, rather
+                # than leaving it at the model's default randomness.
+                temperature=0.3,
             ),
         )
         report_text = (response.text or "").strip()
@@ -402,6 +419,20 @@ async def get_ai_report(username: str, project: str, domain: str):
                 status_code=502,
                 detail="The AI analyst declined to generate a report for this content. "
                        "Try again, or review the raw vault files manually.",
+            )
+
+        # Even with thinking disabled and a generous ceiling, an unusually large
+        # vault could still hit the output cap. Detect that explicitly (via
+        # finish_reason) rather than silently handing back a report that stops
+        # mid-sentence with no indication anything was cut off.
+        candidates = getattr(response, "candidates", None) or []
+        finish_reason = getattr(candidates[0], "finish_reason", None) if candidates else None
+        reason_str = getattr(finish_reason, "name", str(finish_reason)) if finish_reason else ""
+        if "MAX_TOKENS" in reason_str.upper():
+            report_text += (
+                "\n\n---\n**Note:** this report was cut off because it hit the "
+                "model's output limit before finishing. Consider re-running, or "
+                "reviewing the raw vault files for anything past this point."
             )
     except HTTPException:
         raise
