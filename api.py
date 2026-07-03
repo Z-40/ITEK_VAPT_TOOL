@@ -78,6 +78,12 @@ try: from features.recon.web_path import web_paths
 except ImportError:
     def web_paths(data: dict): return {"status": "mock", "module": "web_paths"}
 
+try: from features.post_requests.post_requests import get_post_requests
+except ImportError:
+    def get_post_requests(input_json_data: dict):
+        return {"status": "mock", "total_post_routes_found": 0,
+                "output_directory": input_json_data.get("output_dir", ""), "generated_files": []}
+
 
 app = FastAPI(title="ITEK VAPT Orchestrator (Pure Filesystem Mode)", version="4.0")
 
@@ -92,6 +98,20 @@ STORAGE_DIR.mkdir(exist_ok=True)
 # separate from scan artifacts, so they can be preserved across pipeline
 # re-runs and deleted independently of the domain (see /vault/openapi* routes).
 OPENAPI_DIR_NAME = "openapi_spec"
+
+# Raw POST request blocks generated from the spec. Internal pipeline output only --
+# never listed in /vault or shown in the UI -- and it's derived from the spec, so
+# it's cleared whenever the spec is deleted/replaced and regenerated on every run.
+POST_REQUESTS_DIR_NAME = "post_requests"
+
+def _find_openapi_spec_file(domain_dir: Path):
+    """Returns the Path of the currently uploaded OpenAPI/Swagger spec for this
+    domain, or None if none has been uploaded."""
+    openapi_dir = domain_dir / OPENAPI_DIR_NAME
+    if not openapi_dir.exists(): return None
+    for f in sorted(openapi_dir.iterdir()):
+        if f.is_file(): return f
+    return None
 
 class UserSignup(BaseModel): email: str; username: str; password: str
 class UserLogin(BaseModel): email: str; password: str
@@ -164,6 +184,25 @@ def run_vapt_pipeline_worker(username: str, project_name: str, domain: str):
             except Exception as step_error:
                 # One module failing shouldn't take down the rest of the pipeline
                 module_status[step_name] = f"failed: {step_error}"
+
+        # --- POST request generation: derived from the uploaded OpenAPI/Swagger spec.
+        # Skips cleanly if no spec has been uploaded yet. Writes directly to its own
+        # hidden directory (never surfaced in /vault or the UI) and always replaces
+        # whatever was there before, since it's a byproduct of the current spec, not
+        # a standalone scan result to accumulate.
+        spec_file = _find_openapi_spec_file(domain_dir)
+        if spec_file is None:
+            module_status["post_requests"] = "skipped: no openapi/swagger spec uploaded"
+        else:
+            post_requests_dir = domain_dir / POST_REQUESTS_DIR_NAME
+            try:
+                if post_requests_dir.exists(): shutil.rmtree(post_requests_dir, ignore_errors=True)
+                spec_content = spec_file.read_text(errors="ignore")
+                pr_result = get_post_requests({"spec": spec_content, "output_dir": str(post_requests_dir)})
+                found = pr_result.get("total_post_routes_found", 0)
+                module_status["post_requests"] = "success" if found else "empty"
+            except Exception as step_error:
+                module_status["post_requests"] = f"failed: {step_error}"
 
         has_failures = any(str(v).startswith("failed") for v in module_status.values())
         _safe_write_json(domain_dir / "findings_report.json", {
@@ -292,9 +331,13 @@ async def get_ai_report(username: str, project: str, domain: str):
     if (domain_dir / ".lock-pipeline").exists():
         raise HTTPException(status_code=409, detail="Pipeline still running — wait for it to finish before generating a report.")
 
-    # Gather every artifact in the vault (skip dotfiles, same convention as /vault)
+    # Gather every artifact in the vault (skip dotfiles, same convention as /vault).
+    # post_requests is internal pipeline output, not a user-facing artifact, so it's
+    # excluded here too; the openapi spec itself is still included for context.
     artifacts = []
-    for root, _, filenames in os.walk(domain_dir):
+    for root, dirnames, filenames in os.walk(domain_dir):
+        if Path(root) == domain_dir and POST_REQUESTS_DIR_NAME in dirnames:
+            dirnames.remove(POST_REQUESTS_DIR_NAME)
         for fname in sorted(filenames):
             if fname.startswith("."):
                 continue
@@ -375,9 +418,12 @@ async def get_vault_files(username: str, project: str, domain: str):
         for root, dirnames, filenames in os.walk(domain_dir):
             # Keep the OpenAPI/Swagger spec out of the general artifact list -- it
             # has its own dedicated section/endpoints in the UI, so it shouldn't
-            # show up (or be deletable) as a regular scan artifact here.
-            if Path(root) == domain_dir and OPENAPI_DIR_NAME in dirnames:
-                dirnames.remove(OPENAPI_DIR_NAME)
+            # show up (or be deletable) as a regular scan artifact here. Also keep
+            # post_requests out entirely -- it's internal pipeline output the user
+            # never sees or manages directly.
+            if Path(root) == domain_dir:
+                for hidden_dir in (OPENAPI_DIR_NAME, POST_REQUESTS_DIR_NAME):
+                    if hidden_dir in dirnames: dirnames.remove(hidden_dir)
             for fname in filenames:
                 if fname.startswith("."): continue # Skip lock files
                 full_path = Path(root) / fname
@@ -411,11 +457,9 @@ async def delete_file(username: str, project: str, domain: str, filepath: str):
 async def get_openapi_spec(username: str, project: str, domain: str):
     """Returns info about the currently stored spec (or null if none)."""
     domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
-    openapi_dir = domain_dir / OPENAPI_DIR_NAME
-    if openapi_dir.exists():
-        for f in sorted(openapi_dir.iterdir()):
-            if f.is_file():
-                return {"file": {"name": f.name, "size": f"{f.stat().st_size} bytes"}}
+    spec_file = _find_openapi_spec_file(domain_dir)
+    if spec_file is not None:
+        return {"file": {"name": spec_file.name, "size": f"{spec_file.stat().st_size} bytes"}}
     return {"file": None}
 
 @app.post("/{username}/{project}/{domain}/vault/openapi/upload")
@@ -429,23 +473,29 @@ async def upload_openapi_spec(username: str, project: str, domain: str, file: Up
     if openapi_dir.exists(): shutil.rmtree(openapi_dir, ignore_errors=True)
     openapi_dir.mkdir(parents=True, exist_ok=True)
     with open(openapi_dir / file.filename, "wb") as f: shutil.copyfileobj(file.file, f)
+    # Anything previously generated from the old spec is now stale -- clear it, the
+    # next pipeline run will regenerate it from this new spec.
+    post_requests_dir = domain_dir / POST_REQUESTS_DIR_NAME
+    if post_requests_dir.exists(): shutil.rmtree(post_requests_dir, ignore_errors=True)
     return {"message": "OpenAPI spec uploaded"}
 
 @app.get("/{username}/{project}/{domain}/vault/openapi/view")
 async def view_openapi_spec(username: str, project: str, domain: str):
     domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
-    openapi_dir = domain_dir / OPENAPI_DIR_NAME
-    if openapi_dir.exists():
-        for f in sorted(openapi_dir.iterdir()):
-            if f.is_file():
-                with open(f, "r", errors="ignore") as fh: return {"name": f.name, "content": fh.read()}
+    spec_file = _find_openapi_spec_file(domain_dir)
+    if spec_file is not None:
+        with open(spec_file, "r", errors="ignore") as fh: return {"name": spec_file.name, "content": fh.read()}
     raise HTTPException(status_code=404, detail="No OpenAPI spec uploaded for this domain.")
 
 @app.delete("/{username}/{project}/{domain}/vault/openapi")
 async def delete_openapi_spec(username: str, project: str, domain: str):
-    """Deletes just the OpenAPI spec, independent of the domain or any other
-    vault artifact. The domain and its other artifacts are untouched."""
+    """Deletes the OpenAPI spec, independent of the domain or any other vault
+    artifact. Also clears the post_requests output derived from it, since that
+    output is meaningless without the spec it came from. Everything else in the
+    domain (other vault artifacts, the domain itself) is untouched."""
     domain_dir = STORAGE_DIR / username.lower() / project.lower() / domain.lower()
     openapi_dir = domain_dir / OPENAPI_DIR_NAME
     if openapi_dir.exists(): shutil.rmtree(openapi_dir, ignore_errors=True)
+    post_requests_dir = domain_dir / POST_REQUESTS_DIR_NAME
+    if post_requests_dir.exists(): shutil.rmtree(post_requests_dir, ignore_errors=True)
     return {"message": "OpenAPI spec deleted"}
