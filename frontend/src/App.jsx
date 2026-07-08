@@ -96,6 +96,14 @@ function AuthPage({ view, setView, onLoginSuccess }) {
   const [needsVerification, setNeedsVerification] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
   const [resendStatus, setResendStatus] = useState(null);
+  const [resendCountdown, setResendCountdown] = useState(0);
+
+  // Countdown timer for resend button
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const timer = setTimeout(() => setResendCountdown(resendCountdown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCountdown]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -120,6 +128,7 @@ function AuthPage({ view, setView, onLoginSuccess }) {
 
   const handleResend = async () => {
     setResendStatus("sending");
+    setResendCountdown(30);
     try {
       await fetch(`http://127.0.0.1:8000/resend-verification`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
@@ -133,8 +142,8 @@ function AuthPage({ view, setView, onLoginSuccess }) {
       <section className="flex min-h-screen items-center justify-center px-6">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-8 text-center">
           <h2 className="text-lg font-semibold text-white mb-2">Check your email</h2>
-          <p className="text-sm text-gray-400 mb-6">We sent a verification link to <span className="text-gray-200">{email}</span>. Click it to activate your account, then log in.</p>
-          <button onClick={() => setView("login")} className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">GO TO LOGIN</button>
+          <p className="text-sm text-gray-400 mb-6">We sent a verification link to <span className="text-gray-200">{email}</span>. Click it to verify your email and activate your account.</p>
+          <button onClick={() => { setSignupDone(false); setView("login"); }} className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">GO TO LOGIN</button>
         </div>
       </section>
     );
@@ -148,14 +157,24 @@ function AuthPage({ view, setView, onLoginSuccess }) {
           {view === "signup" && <input placeholder="Username" required value={username} onChange={e => setUsername(e.target.value)} className="w-full p-3 bg-black border border-white/20 text-white rounded" />}
           <input type="email" placeholder="Email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-black border border-white/20 text-white rounded" />
           <input type="password" placeholder="Password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-black border border-white/20 text-white rounded" />
-          <button type="submit" className="w-full bg-emerald-400 text-black font-bold p-3 rounded">{view.toUpperCase()}</button>
+          <button type="submit" className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">{view.toUpperCase()}</button>
           {needsVerification && (
-            <div className="text-center">
+            <div className="text-center pt-2 border-t border-white/10">
               {resendStatus === "sent" ? (
-                <p className="text-xs text-emerald-400">New verification link sent — check your inbox.</p>
+                <div className="space-y-2">
+                  <p className="text-xs text-emerald-400">New verification link sent to your inbox.</p>
+                  {resendCountdown > 0 && (
+                    <p className="text-xs text-gray-500">Resend again in {resendCountdown}s</p>
+                  )}
+                </div>
               ) : (
-                <button type="button" onClick={handleResend} disabled={resendStatus === "sending"} className="text-xs text-cyan-400 hover:underline bg-transparent border-none cursor-pointer">
-                  {resendStatus === "sending" ? "Sending…" : "Resend verification email"}
+                <button 
+                  type="button" 
+                  onClick={handleResend} 
+                  disabled={resendStatus === "sending" || resendCountdown > 0}
+                  className="text-xs text-cyan-400 hover:underline bg-transparent border-none cursor-pointer disabled:text-gray-600 disabled:cursor-not-allowed"
+                >
+                  {resendStatus === "sending" ? "Sending…" : resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Resend verification link"}
                 </button>
               )}
             </div>
@@ -169,17 +188,70 @@ function AuthPage({ view, setView, onLoginSuccess }) {
 function VerifyEmailPage({ token, setView }) {
   const [status, setStatus] = useState("checking"); // checking | ok | error
   const [message, setMessage] = useState("");
+  const [resendEmail, setResendEmail] = useState(null);
+  const [resendState, setResendState] = useState(null); // null | sending | sent | error
+
+  // React 18 StrictMode runs effects twice in dev (mount → cleanup → mount)
+  // to surface exactly this kind of bug. /verify-email is NOT idempotent --
+  // it consumes the one-time token -- so without this guard the effect fires
+  // the request twice for a single link click: whichever call reaches the
+  // server first verifies the account, and the *other* call finds the token
+  // already used/cleared and reports back "expired"/"invalid" to the user,
+  // even though the account is now verified. The ref persists across the
+  // StrictMode remount, so the second invocation is a no-op.
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (!token) { setStatus("error"); setMessage("No verification token provided."); return; }
+    if (!token) { setStatus("error"); setMessage("No verification link provided."); return; }
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    // This tab only ever has the token from the URL -- no localStorage/session
+    // context -- so a network hiccup or a slow/unreachable API previously left
+    // it stuck on "Verifying your email…" forever. A hard timeout guarantees
+    // it always resolves to something the user can act on. It only affects
+    // what the UI *shows*; it deliberately does not abort the underlying
+    // request, since letting it finish server-side is harmless and aborting
+    // it client-side is what caused the double-call bug in the first place.
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      setStatus("error");
+      setMessage("The server is taking too long to respond. Check that the API is running and try again.");
+    }, 10000);
+
     fetch(`http://127.0.0.1:8000/verify-email?token=${encodeURIComponent(token)}`)
       .then(async res => {
+        if (timedOut) return;
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail);
-        setStatus("ok"); setMessage(data.message);
+        // detail is a plain string for a flatly-invalid token, or
+        // {message, email} when the token matched a real (expired) account.
+        const detail = data.detail;
+        const info = detail && typeof detail === "object" ? detail : { message: detail, email: data.email };
+        setResendEmail(info.email || null);
+        setStatus(res.ok ? "ok" : "error");
+        setMessage(info.message || data.message || "");
       })
-      .catch(err => { setStatus("error"); setMessage(err.message); });
+      .catch(() => {
+        if (timedOut) return;
+        setStatus("error");
+        setMessage("Couldn't reach the server. Check your connection and try again.");
+      })
+      .finally(() => clearTimeout(timeoutId));
+
+    return () => clearTimeout(timeoutId);
   }, [token]);
+
+  const handleResend = async () => {
+    if (!resendEmail) return;
+    setResendState("sending");
+    try {
+      await fetch(`http://127.0.0.1:8000/resend-verification`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: resendEmail }),
+      });
+      setResendState("sent");
+    } catch { setResendState("error"); }
+  };
 
   return (
     <section className="flex min-h-screen items-center justify-center px-6">
@@ -187,7 +259,7 @@ function VerifyEmailPage({ token, setView }) {
         {status === "checking" && <p className="text-sm text-gray-400">Verifying your email…</p>}
         {status === "ok" && (
           <>
-            <h2 className="text-lg font-semibold text-emerald-400 mb-2">Email verified</h2>
+            <h2 className="text-lg font-semibold text-emerald-400 mb-2">Email verified!</h2>
             <p className="text-sm text-gray-400 mb-6">{message}</p>
             <button onClick={() => setView("login")} className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">GO TO LOGIN</button>
           </>
@@ -196,7 +268,22 @@ function VerifyEmailPage({ token, setView }) {
           <>
             <h2 className="text-lg font-semibold text-red-400 mb-2">Verification failed</h2>
             <p className="text-sm text-gray-400 mb-6">{message}</p>
-            <button onClick={() => setView("login")} className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">GO TO LOGIN</button>
+            <div className="space-y-3">
+              {/* Re-signing up would just fail with "Account exists" -- this
+                  resends a fresh link to the same account instead. Only
+                  offered when the token matched a real account (i.e. not for
+                  a flatly bogus/malformed link, where there's no email to send to). */}
+              {resendEmail && (
+                resendState === "sent" ? (
+                  <p className="text-xs text-emerald-400">New link sent to {resendEmail} — check your inbox.</p>
+                ) : (
+                  <button onClick={handleResend} disabled={resendState === "sending"} className="w-full bg-zinc-800 text-white font-bold p-3 rounded cursor-pointer border border-white/20 disabled:opacity-50">
+                    {resendState === "sending" ? "Sending…" : "Send me a new link"}
+                  </button>
+                )
+              )}
+              <button onClick={() => setView("login")} className="w-full bg-emerald-400 text-black font-bold p-3 rounded cursor-pointer">GO TO LOGIN</button>
+            </div>
           </>
         )}
       </div>
@@ -653,9 +740,8 @@ function DomainCard({ domain, project, username, refreshProjects }) {
 }
 
 export default function App() {
-  // A verification email link lands here as /?token=... (see APP_BASE_URL in
-  // api.py) -- if one's present, that takes priority over whatever else
-  // localStorage says about the session.
+  // A verification email link lands here as /?token=... -- if one's present, 
+  // that takes priority over whatever else localStorage says about the session.
   const verifyToken = new URLSearchParams(window.location.search).get("token");
 
   const [activeUser, setActiveUser] = useState(() => localStorage.getItem("itek_user") || null);
