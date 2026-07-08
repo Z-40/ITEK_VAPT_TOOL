@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 /* ---------------------------------------------------------------- */
 /* Icons & Constants                                                */
 /* ---------------------------------------------------------------- */
@@ -112,7 +113,7 @@ function AuthPage({ view, setView, onLoginSuccess }) {
     try {
       const endpoint = view === "login" ? "/login" : "/signup";
       const payload = view === "login" ? { email, password } : { email, username, password };
-      const res = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -130,7 +131,7 @@ function AuthPage({ view, setView, onLoginSuccess }) {
     setResendStatus("sending");
     setResendCountdown(30);
     try {
-      await fetch(`http://127.0.0.1:8000/resend-verification`, {
+      await fetch(`${API_BASE_URL}/resend-verification`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
       });
       setResendStatus("sent");
@@ -220,7 +221,7 @@ function VerifyEmailPage({ token, setView }) {
       setMessage("The server is taking too long to respond. Check that the API is running and try again.");
     }, 10000);
 
-    fetch(`http://127.0.0.1:8000/verify-email?token=${encodeURIComponent(token)}`)
+    fetch(`${API_BASE_URL}/verify-email?token=${encodeURIComponent(token)}`)
       .then(async res => {
         if (timedOut) return;
         const data = await res.json();
@@ -246,7 +247,7 @@ function VerifyEmailPage({ token, setView }) {
     if (!resendEmail) return;
     setResendState("sending");
     try {
-      await fetch(`http://127.0.0.1:8000/resend-verification`, {
+      await fetch(`${API_BASE_URL}/resend-verification`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: resendEmail }),
       });
       setResendState("sent");
@@ -302,7 +303,7 @@ function DashboardView({ username, onLogout }) {
   const [newDomains, setNewDomains] = useState({});
 
   const loadProjects = () => {
-    fetch(`http://127.0.0.1:8000/${username}`)
+    fetch(`${API_BASE_URL}/${username}`)
       .then(res => res.json())
       .then(data => setProjects(data.projects || []));
   };
@@ -311,7 +312,7 @@ function DashboardView({ username, onLogout }) {
 
   const handleAddProject = async () => {
     if (!newProjectName.trim()) return;
-    const res = await fetch(`http://127.0.0.1:8000/${username}/projects/add`, {
+    const res = await fetch(`${API_BASE_URL}/${username}/projects/add`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newProjectName.trim() })
@@ -334,7 +335,7 @@ function DashboardView({ username, onLogout }) {
     
     if (!confirmation) return;
     
-    const res = await fetch(`http://127.0.0.1:8000/${username}/projects/${projectName}/remove`, {
+    const res = await fetch(`${API_BASE_URL}/${username}/projects/${projectName}/remove`, {
       method: "DELETE"
     });
     
@@ -350,7 +351,7 @@ function DashboardView({ username, onLogout }) {
     const targetInput = newDomains[projectName] || "";
     if (!targetInput.trim()) return;
     
-    const res = await fetch(`http://127.0.0.1:8000/${username}/${projectName}/domains/add`, {
+    const res = await fetch(`${API_BASE_URL}/${username}/${projectName}/domains/add`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ domain: targetInput.trim() })
@@ -439,7 +440,7 @@ function DomainCard({ domain, project, username, refreshProjects }) {
   const pollRef = useRef(null);
 
   const loadVault = () => {
-    return fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault`)
+    return fetch(`${API_BASE_URL}/${username}/${project}/${domain}/vault`)
       .then(res => res.json())
       .then(data => {
         const fetchedFiles = data.files || [];
@@ -449,14 +450,14 @@ function DomainCard({ domain, project, username, refreshProjects }) {
   };
 
   const loadOpenApiSpec = () => {
-    return fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/openapi`)
+    return fetch(`${API_BASE_URL}/${username}/${project}/${domain}/vault/openapi`)
       .then(res => res.json())
       .then(data => setOpenApiSpec(data.file || null));
   };
 
   const checkStatus = async () => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/pipeline/status`);
+      const res = await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/pipeline/status`);
       if (!res.ok) return false;
       const data = await res.json();
       return !!data.running;
@@ -507,7 +508,7 @@ function DomainCard({ domain, project, username, refreshProjects }) {
     if (pipelineRunning) return; // guard against a rapid double-click race
     setPipelineRunning(true); // lock the button immediately, before the request even resolves
     try {
-      const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/pipeline/start`, { method: "POST" });
+      const res = await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/pipeline/start`, { method: "POST" });
       if (!res.ok && res.status !== 409) {
         // 409 just means "already running" — that's fine, we resync to it below.
         // Anything else (404 workspace missing, etc.) is a real failure.
@@ -524,7 +525,7 @@ function DomainCard({ domain, project, username, refreshProjects }) {
   };
 
   const handleDeleteDomain = async () => {
-    await fetch(`http://127.0.0.1:8000/${username}/${project}/domains/${domain}/remove`, { method: "DELETE" });
+    await fetch(`${API_BASE_URL}/${username}/${project}/domains/${domain}/remove`, { method: "DELETE" });
     refreshProjects();
   };
 
@@ -532,7 +533,7 @@ function DomainCard({ domain, project, username, refreshProjects }) {
     if (!e.target.files[0]) return;
     const formData = new FormData();
     formData.append("file", e.target.files[0]);
-    await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/upload`, { method: "POST", body: formData });
+    await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/vault/upload`, { method: "POST", body: formData });
     loadVault();
   };
 
@@ -541,13 +542,13 @@ function DomainCard({ domain, project, username, refreshProjects }) {
     const formData = new FormData();
     formData.append("file", e.target.files[0]);
     // Backend wipes any previous spec first, so this always fully replaces it.
-    await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/openapi/upload`, { method: "POST", body: formData });
+    await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/vault/openapi/upload`, { method: "POST", body: formData });
     e.target.value = ""; // allow re-selecting the same filename again later
     loadOpenApiSpec();
   };
 
   const handleViewOpenApiSpec = async () => {
-    const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/openapi/view`);
+    const res = await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/vault/openapi/view`);
     if (res.ok) {
       const data = await res.json();
       setViewFile({ name: data.name, content: data.content });
@@ -556,12 +557,12 @@ function DomainCard({ domain, project, username, refreshProjects }) {
 
   const handleDeleteOpenApiSpec = async () => {
     // Deletes just the spec — the domain and its other vault artifacts are untouched.
-    await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/openapi`, { method: "DELETE" });
+    await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/vault/openapi`, { method: "DELETE" });
     loadOpenApiSpec();
   };
 
   const handleView = async (filepath) => {
-    const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/view/${filepath}`);
+    const res = await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/vault/view/${filepath}`);
     if (res.ok) {
       const data = await res.json();
       setViewFile({ name: filepath, content: data.content });
@@ -569,7 +570,7 @@ function DomainCard({ domain, project, username, refreshProjects }) {
   };
 
   const handleDeleteFile = async (filepath) => {
-    await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/vault/delete/${filepath}`, { method: "DELETE" });
+    await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/vault/delete/${filepath}`, { method: "DELETE" });
     loadVault();
   };
 
@@ -578,7 +579,7 @@ function DomainCard({ domain, project, username, refreshProjects }) {
     setReportData(null);
     setReportLoading(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/${username}/${project}/${domain}/report`);
+      const res = await fetch(`${API_BASE_URL}/${username}/${project}/${domain}/report`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to generate report");
       setReportData(data);
