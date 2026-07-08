@@ -39,4 +39,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run the app with Gunicorn + Uvicorn workers
 # Railway provides the PORT env var automatically; if not set, default to 8000
-CMD ["gunicorn", "--worker-class", "uvicorn.workers.UvicornWorker", "--workers", "2", "--bind", "0.0.0.0:${PORT:-8000}", "api:app"]
+CMD ["sh", "-c", "gunicorn -b 0.0.0.0:$PORT app:app -k uvicorn.workers.UvicornWorker"]
