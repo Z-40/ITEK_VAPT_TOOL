@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies 
 # - build-essential: for compiling Python packages with C extensions (bcrypt, etc.)
 # - git: sqlmap needs it for some operations
 # - curl: health checks
