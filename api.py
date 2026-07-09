@@ -96,10 +96,14 @@ except ImportError:
 
 app = FastAPI(title="ITEK VAPT Orchestrator (Pure Filesystem Mode)", version="4.0")
 from fastapi.middleware.cors import CORSMiddleware
+origins = [
+    "https://itek-vapt-tool.vercel.app",  # production domain
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://itek-vapt-tool-r8h4s3444-shauryapunde-4879s-projects.vercel.app"],
+    allow_origins=origins,
+    allow_origin_regex=r"https://itek-vapt-tool-.*\.vercel\.app",  # covers preview deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
