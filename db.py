@@ -22,14 +22,13 @@ from mysql.connector import pooling
 VERIFICATION_TOKEN_TTL = timedelta(minutes=int(os.getenv("VERIFICATION_LINK_TTL_MINUTES", "15")))
 
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "127.0.0.1"),
-    "port": int(os.getenv("DB_PORT", "3306")),
-    "user": os.getenv("DB_USER", "itek_app"),
-    "password": os.getenv("DB_PASSWORD", ""),
-    "database": os.getenv("DB_NAME", "itek_vapt"),
+    "host": os.getenv("MYSQLHOST", "127.0.0.1"),
+    "port": int(os.getenv("MYSQLPORT", "3306")),
+    "user": os.getenv("MYSQLUSER", "root"),
+    "password": os.getenv("MYSQLPASSWORD", ""),
+    "database": os.getenv("MYSQLDATABASE", "railway"),
     "autocommit": False,
 }
-
 _pool = pooling.MySQLConnectionPool(pool_name="itek_pool", pool_size=5, **DB_CONFIG)
 
 def ensure_schema():
