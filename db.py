@@ -29,6 +29,7 @@ DB_CONFIG = {
     "database": os.getenv("MYSQLDATABASE", "railway"),
     "autocommit": False,
 }
+
 _pool = pooling.MySQLConnectionPool(pool_name="itek_pool", pool_size=5, **DB_CONFIG)
 
 def ensure_schema():
