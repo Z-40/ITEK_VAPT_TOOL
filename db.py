@@ -18,7 +18,7 @@ from mysql.connector import pooling
 # request a fresh one. 30 seconds was a bug -- real-world email delivery
 # alone can take longer than that, so links were expiring before anyone
 # could ever click them. 15 minutes is a reasonable default for a link
-# (vs. e.g. a 10-min OTP) and is configurable via env var if needed.
+# (vs. e.g. a 10-min OTP) and is configurable via env var if needed
 VERIFICATION_TOKEN_TTL = timedelta(minutes=int(os.getenv("VERIFICATION_LINK_TTL_MINUTES", "15")))
 
 DB_CONFIG = {
